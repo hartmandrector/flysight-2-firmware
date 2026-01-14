@@ -42,6 +42,7 @@
 
 #include "fusion_integration.h"
 #include "config.h"
+#include "log.h"
 
 /* Unit conversion constants */
 #define GYRO_SCALE    (1.0f / 1000.0f)       /* deg/s*1000 -> deg/s */
@@ -52,6 +53,7 @@
 #define SAMPLE_RATE_HZ  416
 
 /* State */
+static bool fusion_enabled = false;
 static bool fusion_active = false;
 static uint32_t last_imu_time = 0;
 static FS_Fusion_Data_t fusion_data;
@@ -65,33 +67,78 @@ static FusionBias bias;
 static FusionVector mag_hard_iron = FUSION_VECTOR_ZERO;
 static FusionMatrix mag_soft_iron = FUSION_MATRIX_IDENTITY;
 
+/* IMU calibration */
+static FusionVector gyro_bias = FUSION_VECTOR_ZERO;
+static FusionMatrix accel_matrix = FUSION_MATRIX_IDENTITY;
+
 /* Last magnetometer reading (async from IMU) */
 static FusionVector last_mag = FUSION_VECTOR_ZERO;
 static bool mag_valid = false;
 
 void FS_Fusion_Init(void)
 {
+    const FS_Config_Data_t *cfg = FS_Config_Get();
+    
+    /* Check if fusion is enabled */
+    fusion_enabled = cfg->enable_fusion;
+    if (!fusion_enabled) return;
+    
     /* Initialize gyroscope bias estimation */
     FusionBiasInitialise(&bias, SAMPLE_RATE_HZ);
     
     /* Initialize AHRS algorithm */
     FusionAhrsInitialise(&ahrs);
     
-    /* Configure AHRS settings for high-dynamics flight */
+    /* Configure AHRS settings from config file */
     FusionAhrsSettings settings = {
         .convention = FusionConventionNwu,      /* North-West-Up */
-        .gain = 0.5f,                           /* Filter gain (0.5 default) */
+        .gain = (float)cfg->fusion_gain / 100.0f,
         .gyroscopeRange = 2000.0f,              /* LSM6DSO max range */
-        .accelerationRejection = 10.0f,         /* Reject accel if error > 10° */
-        .magneticRejection = 10.0f,             /* Reject mag if error > 10° */
+        .accelerationRejection = (float)cfg->fusion_accel_reject,
+        .magneticRejection = (float)cfg->fusion_mag_reject,
         .recoveryTriggerPeriod = SAMPLE_RATE_HZ * 5,  /* 5 second recovery */
     };
     FusionAhrsSetSettings(&ahrs, &settings);
     
-    /* Default magnetometer calibration from fusion viewer testing */
-    /* TODO: Load from config file or calibration storage */
-    mag_hard_iron = (FusionVector){ .axis = { -0.3150f, -0.5015f, -0.6475f } };
-    mag_soft_iron = FUSION_MATRIX_IDENTITY;  /* No soft-iron correction yet */
+    /* Load magnetometer calibration from config (milligauss -> gauss) */
+    mag_hard_iron = (FusionVector){ .axis = {
+        (float)cfg->fusion_mag_hard_x / 1000.0f,
+        (float)cfg->fusion_mag_hard_y / 1000.0f,
+        (float)cfg->fusion_mag_hard_z / 1000.0f
+    }};
+    
+    /* Load magnetometer soft iron matrix from config (scaled by 1000000) */
+    mag_soft_iron = (FusionMatrix){ .element = {
+        .xx = (float)cfg->fusion_mag_soft_m[0] / 1000000.0f,
+        .xy = (float)cfg->fusion_mag_soft_m[1] / 1000000.0f,
+        .xz = (float)cfg->fusion_mag_soft_m[2] / 1000000.0f,
+        .yx = (float)cfg->fusion_mag_soft_m[3] / 1000000.0f,
+        .yy = (float)cfg->fusion_mag_soft_m[4] / 1000000.0f,
+        .yz = (float)cfg->fusion_mag_soft_m[5] / 1000000.0f,
+        .zx = (float)cfg->fusion_mag_soft_m[6] / 1000000.0f,
+        .zy = (float)cfg->fusion_mag_soft_m[7] / 1000000.0f,
+        .zz = (float)cfg->fusion_mag_soft_m[8] / 1000000.0f,
+    }};
+    
+    /* Load gyro bias from config (scaled by 10000 -> deg/s) */
+    gyro_bias = (FusionVector){ .axis = {
+        (float)cfg->fusion_gyro_bias_x / 10000.0f,
+        (float)cfg->fusion_gyro_bias_y / 10000.0f,
+        (float)cfg->fusion_gyro_bias_z / 10000.0f
+    }};
+    
+    /* Load accelerometer scale matrix from config (scaled by 1000000) */
+    accel_matrix = (FusionMatrix){ .element = {
+        .xx = (float)cfg->fusion_accel_m[0] / 1000000.0f,
+        .xy = (float)cfg->fusion_accel_m[1] / 1000000.0f,
+        .xz = (float)cfg->fusion_accel_m[2] / 1000000.0f,
+        .yx = (float)cfg->fusion_accel_m[3] / 1000000.0f,
+        .yy = (float)cfg->fusion_accel_m[4] / 1000000.0f,
+        .yz = (float)cfg->fusion_accel_m[5] / 1000000.0f,
+        .zx = (float)cfg->fusion_accel_m[6] / 1000000.0f,
+        .zy = (float)cfg->fusion_accel_m[7] / 1000000.0f,
+        .zz = (float)cfg->fusion_accel_m[8] / 1000000.0f,
+    }};
     
     /* Reset state */
     last_imu_time = 0;
@@ -111,6 +158,8 @@ void FS_Fusion_Init(void)
 
 void FS_Fusion_Start(void)
 {
+    if (!fusion_enabled) return;
+    
     FusionAhrsReset(&ahrs);
     FusionBiasInitialise(&bias, SAMPLE_RATE_HZ);
     fusion_active = true;
@@ -125,7 +174,7 @@ void FS_Fusion_Stop(void)
 
 void FS_Fusion_UpdateMag(int16_t x, int16_t y, int16_t z)
 {
-    if (!fusion_active) return;
+    if (!fusion_enabled || !fusion_active) return;
     
     /* Convert from integer (gauss*1000) to float (gauss) */
     FusionVector raw_mag = {
@@ -163,7 +212,7 @@ void FS_Fusion_UpdateIMU(uint32_t time_ms,
                          int32_t wx, int32_t wy, int32_t wz,
                          int32_t ax, int32_t ay, int32_t az)
 {
-    if (!fusion_active) return;
+    if (!fusion_enabled || !fusion_active) return;
     
     /* Calculate delta time */
     float dt;
@@ -188,17 +237,25 @@ void FS_Fusion_UpdateIMU(uint32_t time_ms,
         }
     };
     
-    /* Apply gyroscope bias estimation and correction */
+    /* Apply static gyro bias from config */
+    gyroscope.axis.x -= gyro_bias.axis.x;
+    gyroscope.axis.y -= gyro_bias.axis.y;
+    gyroscope.axis.z -= gyro_bias.axis.z;
+    
+    /* Also apply runtime bias estimation (FusionBias refines on top of static) */
     gyroscope = FusionBiasUpdate(&bias, gyroscope);
     
     /* Convert accel from integer (g*100000) to float (g) */
-    FusionVector accelerometer = {
+    FusionVector raw_accel = {
         .axis = {
             .x = (float)ax * ACCEL_SCALE,
             .y = (float)ay * ACCEL_SCALE,
             .z = (float)az * ACCEL_SCALE,
         }
     };
+    
+    /* Apply accelerometer scale matrix calibration: corrected = M * raw */
+    FusionVector accelerometer = FusionMatrixMultiplyVector(accel_matrix, raw_accel);
     
     /* Run AHRS update */
     if (mag_valid) {
@@ -241,6 +298,18 @@ void FS_Fusion_UpdateIMU(uint32_t time_ms,
     fusion_status.accelerometerIgnored = states.accelerometerIgnored;
     fusion_status.magnetometerIgnored = states.magnetometerIgnored;
     fusion_status.angularRateRecovery = flags.angularRateRecovery;
+    
+    /* Log AHRS data (quaternion scaled to int16 * 10000) */
+    if (FS_Config_Get()->enable_logging)
+    {
+        FS_AHRS_Data_t ahrs_data;
+        ahrs_data.time = time_ms;
+        ahrs_data.q_w = (int16_t)(q.element.w * 10000.0f);
+        ahrs_data.q_x = (int16_t)(q.element.x * 10000.0f);
+        ahrs_data.q_y = (int16_t)(q.element.y * 10000.0f);
+        ahrs_data.q_z = (int16_t)(q.element.z * 10000.0f);
+        FS_Log_WriteAHRSData(&ahrs_data);
+    }
 }
 
 const FS_Fusion_Data_t* FS_Fusion_GetData(void)

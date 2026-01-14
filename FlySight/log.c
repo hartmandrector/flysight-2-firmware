@@ -48,6 +48,7 @@
 #define RAW_COUNT   5
 #define IMU_COUNT   667
 #define VBAT_COUNT  2
+#define AHRS_COUNT  667  /* Same as IMU - one quaternion per IMU sample */
 
 #define EVENT_MESSAGE_MAX_LEN 80
 #define EVENT_COUNT 2
@@ -98,6 +99,11 @@ static          uint32_t       vbatRdI;             // read index
 static volatile uint32_t       vbatWrI;             // write index
 static          uint32_t       vbatUsed;            // buffer used
 
+static          FS_AHRS_Data_t ahrsBuf[AHRS_COUNT]; // data buffer
+static          uint32_t       ahrsRdI;             // read index
+static volatile uint32_t       ahrsWrI;             // write index
+static          uint32_t       ahrsUsed;            // buffer used
+
 static          FS_Log_Event_t eventBuf[EVENT_COUNT]; // data buffer
 static          uint32_t       eventRdI;              // read index
 static volatile uint32_t       eventWrI;              // write index
@@ -138,7 +144,8 @@ typedef enum
 	FS_LOG_SENSOR_MAG,
 	FS_LOG_SENSOR_TIME,
 	FS_LOG_SENSOR_IMU,
-	FS_LOG_SENSOR_VBAT
+	FS_LOG_SENSOR_VBAT,
+	FS_LOG_SENSOR_AHRS
 } FS_Log_SensorType_t ;
 
 static uint8_t enable_flags;
@@ -178,6 +185,7 @@ static FS_Log_SensorType_t FS_Log_GetNextSensor(void)
 	HANDLE_SENSOR(timeRdI, timeWrI, timeBuf, TIME_COUNT, FS_LOG_SENSOR_TIME);
 	HANDLE_SENSOR(imuRdI,  imuWrI,  imuBuf,  IMU_COUNT,  FS_LOG_SENSOR_IMU);
 	HANDLE_SENSOR(vbatRdI, vbatWrI, vbatBuf, VBAT_COUNT, FS_LOG_SENSOR_VBAT);
+	HANDLE_SENSOR(ahrsRdI, ahrsWrI, ahrsBuf, AHRS_COUNT, FS_LOG_SENSOR_AHRS);
 
 	return nextType;
 }
@@ -491,6 +499,41 @@ void FS_Log_UpdateVBAT(void)
 	++vbatRdI;
 }
 
+void FS_Log_UpdateAHRS(void)
+{
+	char row[150];
+	UINT bw;
+
+	if (!(enable_flags & FS_LOG_ENABLE_SENSOR))
+	{
+		Error_Handler();
+	}
+
+	// Get current data point
+	FS_AHRS_Data_t *data = &ahrsBuf[ahrsRdI % AHRS_COUNT];
+
+	// Write to disk
+	char *ptr = row + sizeof(row);
+
+	*(--ptr) = '\n';
+	ptr = writeInt32ToBuf(ptr, data->q_z, 4, 1, '\r');
+	ptr = writeInt32ToBuf(ptr, data->q_y, 4, 1, ',');
+	ptr = writeInt32ToBuf(ptr, data->q_x, 4, 1, ',');
+	ptr = writeInt32ToBuf(ptr, data->q_w, 4, 1, ',');
+	ptr = writeInt32ToBuf(ptr, data->time, 3, 1, ',');
+	*(--ptr) = ',';
+	*(--ptr) = 'S';
+	*(--ptr) = 'R';
+	*(--ptr) = 'H';
+	*(--ptr) = 'A';
+	*(--ptr) = '$';
+
+	f_write(&sensorFile, ptr, row + sizeof(row) - ptr, &bw);
+
+	// Increment read index
+	++ahrsRdI;
+}
+
 void FS_Log_WriteEventEntry(const FS_Log_Event_t *entry)
 {
 	char row[100];
@@ -574,6 +617,9 @@ static void FS_Log_Update(void)
 			break;
 		case FS_LOG_SENSOR_VBAT:
 			FS_Log_UpdateVBAT();
+			break;
+		case FS_LOG_SENSOR_AHRS:
+			FS_Log_UpdateAHRS();
 			break;
 		case FS_LOG_SENSOR_NONE:
 			break;		// should never be called
@@ -767,6 +813,10 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 	vbatWrI = 0;
 	vbatUsed = 0;
 
+	ahrsRdI = 0;
+	ahrsWrI = 0;
+	ahrsUsed = 0;
+
 	validDateTime = false;
 
 	updateCount = 0;
@@ -843,6 +893,8 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 		f_printf(&sensorFile, "$UNIT,TIME,s,s,\n");
 		f_printf(&sensorFile, "$COL,VBAT,time,voltage\n");
 		f_printf(&sensorFile, "$UNIT,VBAT,s,volt\n");
+		f_printf(&sensorFile, "$COL,AHRS,time,q_w,q_x,q_y,q_z\n");
+		f_printf(&sensorFile, "$UNIT,AHRS,s,,,,,\n");
 		f_printf(&sensorFile, "$DATA\n");
 		f_sync(&sensorFile);
 	}
@@ -921,6 +973,7 @@ void FS_Log_DeInit(uint32_t temp_folder)
 		FS_Log_WriteEvent("%lu/%lu slots used in $RAW message buffer",  rawUsed, RAW_COUNT);
 		FS_Log_WriteEvent("%lu/%lu slots used in $IMU message buffer",  imuUsed, IMU_COUNT);
 		FS_Log_WriteEvent("%lu/%lu slots used in $VBAT message buffer", vbatUsed, VBAT_COUNT);
+		FS_Log_WriteEvent("%lu/%lu slots used in $AHRS message buffer", ahrsUsed, AHRS_COUNT);
 		FS_Log_WriteEvent("%lu/%lu slots used in $EVNT message buffer", eventUsed, EVENT_COUNT);
 
 		// Add event log entries for timing info
@@ -1199,6 +1252,30 @@ void FS_Log_WriteVBATData(const FS_VBAT_Data_t *current)
 	{
 		// Update buffer statistics
 		vbatUsed = VBAT_COUNT;
+	}
+}
+
+void FS_Log_WriteAHRSData(const FS_AHRS_Data_t *current)
+{
+	if (logState != LOG_STATE_ACTIVE) return;
+	if (!(enable_flags & FS_LOG_ENABLE_SENSOR)) return;
+
+	if (ahrsWrI < ahrsRdI + AHRS_COUNT)
+	{
+		// Copy to circular buffer
+		FS_AHRS_Data_t *saved = &ahrsBuf[ahrsWrI % AHRS_COUNT];
+		memcpy(saved, current, sizeof(FS_AHRS_Data_t));
+
+		// Increment write index
+		++ahrsWrI;
+
+		// Update buffer statistics
+		ahrsUsed = MAX(ahrsUsed, ahrsWrI - ahrsRdI);
+	}
+	else
+	{
+		// Update buffer statistics
+		ahrsUsed = AHRS_COUNT;
 	}
 }
 

@@ -186,6 +186,20 @@ typedef struct
 
 	// Flag to control whether navigation modes are allowed
 	uint8_t  enable_nav;
+
+	// Sensor fusion settings
+	uint8_t  enable_fusion;       // Enable AHRS sensor fusion
+	uint16_t fusion_gain;         // Filter gain * 100 (e.g., 46 = 0.46)
+	uint8_t  fusion_accel_reject; // Acceleration rejection threshold (degrees)
+	uint8_t  fusion_mag_reject;   // Magnetic rejection threshold (degrees)
+	int16_t  fusion_mag_hard_x;   // Hard iron offset X (milligauss)
+	int16_t  fusion_mag_hard_y;   // Hard iron offset Y (milligauss)
+	int16_t  fusion_mag_hard_z;   // Hard iron offset Z (milligauss)
+	int32_t  fusion_gyro_bias_x;  // Gyro bias X * 10000 (deg/s)
+	int32_t  fusion_gyro_bias_y;  // Gyro bias Y * 10000 (deg/s)
+	int32_t  fusion_gyro_bias_z;  // Gyro bias Z * 10000 (deg/s)
+	int32_t  fusion_accel_m[9];   // Accel scale matrix * 1000000 (row-major)
+	int32_t  fusion_mag_soft_m[9]; // Mag soft iron matrix * 1000000 (row-major)
 } FS_Config_Data_t;
 
 typedef enum {
