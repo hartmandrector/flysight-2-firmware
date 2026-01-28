@@ -99,6 +99,8 @@ void Custom_VBAT_Update(const FS_VBAT_Data_t *current);
 
 void Custom_BARO_Update(const FS_Baro_Data_t *current);
 
+void Custom_HUM_Update(const FS_Hum_Data_t *current);
+
 void Custom_ACCEL_Update(const FS_IMU_Data_t *current);
 
 void Custom_GYRO_Update(const FS_IMU_Data_t *current);

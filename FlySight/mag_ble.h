@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include "stm32wbxx_hal.h"
 #include "mag.h"
+#include "config.h"
 
 /* ------------------------------------------------------------------ */
 /* Packet layout control                                              */
@@ -44,11 +45,11 @@
 /* ------------------------------------------------------------------ */
 /* Public API                                                         */
 /* ------------------------------------------------------------------ */
-void    MAG_BLE_Init(void);
-uint8_t MAG_BLE_GetMask(void);
-void    MAG_BLE_SetMask(uint8_t mask);
-uint8_t MAG_BLE_GetDivider(void);
-void    MAG_BLE_SetDivider(uint8_t divider);
-uint8_t MAG_BLE_Build(const FS_Mag_Data_t *src, uint8_t *dst);
+void     MAG_BLE_Init(const FS_Config_Data_t *config);
+uint8_t  MAG_BLE_GetMask(void);
+void     MAG_BLE_SetMask(uint8_t mask);
+uint16_t MAG_BLE_GetDivider(void);
+void     MAG_BLE_SetDivider(uint16_t divider);
+uint8_t  MAG_BLE_Build(const FS_Mag_Data_t *src, uint8_t *dst);
 
 #endif /* MAG_BLE_H_ */

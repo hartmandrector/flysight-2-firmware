@@ -26,6 +26,11 @@
 #include "custom_stm.h"       // For CUSTOM_STM_SD_CONTROL_POINT char opcode
 #include "ble_tx_queue.h"     // For BLE_TX_Queue_SendTxPacket
 #include "gnss_ble.h"         // For GNSS_BLE_SetMask, GNSS_BLE_GetMask
+#include "baro_ble.h"
+#include "hum_ble.h"
+#include "accel_ble.h"
+#include "gyro_ble.h"
+#include "mag_ble.h"
 #include "string.h"           // For memcpy
 #include "app_common.h"       // For APP_DBG_MSG (optional)
 #include "dbg_trace.h"
@@ -77,6 +82,71 @@ void SensorData_Handle_SD_ControlPointWrite(
                     response_data_buf[0] = GNSS_BLE_GetMask(); // Call utility
                     response_data_len = 1;
                     status = CP_STATUS_SUCCESS;
+                }
+                break;
+
+            case SD_CMD_SET_BLE_DIVIDER:
+                if (params_len != 3) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    uint8_t sensor_id = params[0];
+                    uint16_t divider = params[1] | (params[2] << 8); // Little-endian
+                    
+                    if (divider == 0) {
+                        status = CP_STATUS_INVALID_PARAMETER; // 0 reserved for auto-calc at boot
+                    } else if (sensor_id == 0) {
+                        BARO_BLE_SetDivider(divider);
+                        status = CP_STATUS_SUCCESS;
+                    } else if (sensor_id == 1) {
+                        HUM_BLE_SetDivider(divider);
+                        status = CP_STATUS_SUCCESS;
+                    } else if (sensor_id == 2) {
+                        ACCEL_BLE_SetDivider(divider);
+                        status = CP_STATUS_SUCCESS;
+                    } else if (sensor_id == 3) {
+                        GYRO_BLE_SetDivider(divider);
+                        status = CP_STATUS_SUCCESS;
+                    } else if (sensor_id == 4) {
+                        MAG_BLE_SetDivider(divider);
+                        status = CP_STATUS_SUCCESS;
+                    } else {
+                        status = CP_STATUS_INVALID_PARAMETER; // Invalid sensor_id
+                    }
+                }
+                break;
+
+            case SD_CMD_GET_BLE_DIVIDER:
+                if (params_len != 1) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    uint8_t sensor_id = params[0];
+                    uint16_t divider = 0;
+                    
+                    if (sensor_id == 0) {
+                        divider = BARO_BLE_GetDivider();
+                        status = CP_STATUS_SUCCESS;
+                    } else if (sensor_id == 1) {
+                        divider = HUM_BLE_GetDivider();
+                        status = CP_STATUS_SUCCESS;
+                    } else if (sensor_id == 2) {
+                        divider = ACCEL_BLE_GetDivider();
+                        status = CP_STATUS_SUCCESS;
+                    } else if (sensor_id == 3) {
+                        divider = GYRO_BLE_GetDivider();
+                        status = CP_STATUS_SUCCESS;
+                    } else if (sensor_id == 4) {
+                        divider = MAG_BLE_GetDivider();
+                        status = CP_STATUS_SUCCESS;
+                    } else {
+                        status = CP_STATUS_INVALID_PARAMETER; // Invalid sensor_id
+                    }
+                    
+                    if (status == CP_STATUS_SUCCESS) {
+                        response_data_buf[0] = sensor_id;
+                        response_data_buf[1] = divider & 0xFF;        // Low byte
+                        response_data_buf[2] = (divider >> 8) & 0xFF; // High byte
+                        response_data_len = 3;
+                    }
                 }
                 break;
 

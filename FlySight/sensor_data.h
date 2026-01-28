@@ -30,6 +30,11 @@
 #define SD_CMD_SET_GNSS_BLE_MASK   0x01 // Payload: [new_mask (1 byte)]
 #define SD_CMD_GET_GNSS_BLE_MASK   0x02 // Payload: (none)
                                         // Response Data: [current_mask (1 byte)]
+#define SD_CMD_SET_BLE_DIVIDER     0x10 // Payload: [sensor_id (1 byte)] [divider_low (1 byte)] [divider_high (1 byte)]
+                                        // sensor_id: 0=Baro, 1=Hum, 2=Accel, 3=Gyro, 4=Mag
+                                        // divider: 1-65535 (little-endian uint16_t, 0 reserved for auto)
+#define SD_CMD_GET_BLE_DIVIDER     0x11 // Payload: [sensor_id (1 byte)]
+                                        // Response Data: [sensor_id (1 byte)] [divider_low (1 byte)] [divider_high (1 byte)]
 // ... other future SD specific commands, e.g., for enabling/disabling other sensor streams over BLE ...
 
 /**

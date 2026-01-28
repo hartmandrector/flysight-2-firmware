@@ -239,7 +239,7 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
         *   UUID: `00000006-8e22-4541-9d4c-21edae82ed19`
         *   Properties: **Write, Indicate**
         *   Permissions: Encrypted Read/Write required.
-        *   Usage: Used to control which data fields are included in the `SD_GNSS_Measurement` characteristic notifications. Also used to retrieve the current mask. Central enables indications if responses are desired.
+        *   Usage: Used to control sensor data streaming settings, including data field masks and BLE transmission dividers. Central enables indications if responses are desired.
         *   Max Length: 20 bytes (`SizeSd_Control_Point`). Variable length.
         *   **Write Operations (Central to FlySight):**
             *   Byte 0: Opcode
@@ -247,6 +247,14 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
                     *   Payload: `[new_mask (uint8)]`. (Total length: 2 bytes)
                 *   `0x02` (`SD_CMD_GET_GNSS_BLE_MASK`): Request the current data mask.
                     *   Payload: (None). (Total length: 1 byte)
+                *   `0x10` (`SD_CMD_SET_BLE_DIVIDER`): Set BLE transmission divider for a sensor (runtime override).
+                    *   Payload: `[sensor_id (uint8)] [divider_low (uint8)] [divider_high (uint8)]`. (Total length: 4 bytes)
+                    *   `sensor_id`: 0=Baro, 1=Humidity, 2=Accel, 3=Gyro, 4=Mag
+                    *   `divider`: 1-65535 (little-endian uint16_t). Decimation factor: 1=every sample, 2=every 2nd sample, etc.
+                    *   Note: Value 0 is reserved for auto-calculation (only valid in config.txt at boot, not via control point). GPS divider not configurable (use Rate setting instead).
+                    *   Changes are temporary until reboot. Use config.txt for persistent settings.
+                *   `0x11` (`SD_CMD_GET_BLE_DIVIDER`): Request the current BLE transmission divider for a sensor.
+                    *   Payload: `[sensor_id (uint8)]`. (Total length: 2 bytes)
         *   **Indication Responses (FlySight to Central, if indications enabled):**
             *   Format: `[0xF0 (CP_RESPONSE_ID)] [Request Opcode] [Status] [Optional Data]`
             *   For `SD_CMD_SET_GNSS_BLE_MASK (0x01)`:
@@ -255,6 +263,12 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
             *   For `SD_CMD_GET_GNSS_BLE_MASK (0x02)`:
                 *   Success: `[0xF0] [0x02] [0x01 (CP_STATUS_SUCCESS)] [current_mask (uint8)]`
                 *   Invalid Param: `[0xF0] [0x02] [0x03 (CP_STATUS_INVALID_PARAMETER)]`
+            *   For `SD_CMD_SET_BLE_DIVIDER (0x10)`:
+                *   Success: `[0xF0] [0x10] [0x01 (CP_STATUS_SUCCESS)]`
+                *   Invalid Param: `[0xF0] [0x10] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (invalid sensor_id or divider=0)
+            *   For `SD_CMD_GET_BLE_DIVIDER (0x11)`:
+                *   Success: `[0xF0] [0x11] [0x01 (CP_STATUS_SUCCESS)] [sensor_id (uint8)] [divider_low (uint8)] [divider_high (uint8)]`
+                *   Invalid Param: `[0xF0] [0x11] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (invalid sensor_id)
             *   For unknown command:
                 *   `[0xF0] [Received Opcode] [0x02 (CP_STATUS_CMD_NOT_SUPPORTED)]`
 

@@ -24,14 +24,26 @@
 #include <string.h>
 
 #include "mag_ble.h"
+#include "ble_config.h"
+#include "sensor_odr.h"
 
-static uint8_t s_mask = MAG_BLE_DEFAULT_MASK;
-static uint8_t s_divider = 1u;  /* 1 = every sample, 2 = every 2nd sample, etc. */
+static uint8_t  s_mask = MAG_BLE_DEFAULT_MASK;
+static uint16_t s_divider = 1u;  /* 1 = every sample, 2 = every 2nd sample, etc. */
 
-void MAG_BLE_Init(void)
+void MAG_BLE_Init(const FS_Config_Data_t *config)
 {
     s_mask = MAG_BLE_DEFAULT_MASK;
-    s_divider = 1u;
+    
+    // Calculate or use manual divider
+    if (config->ble_mag_divider == 0) {
+        // Auto-calculate based on ODR
+        s_divider = FS_BLE_CalculateDivider(config->mag_odr, 
+                                             mag_odr_table, 
+                                             MAG_ODR_TABLE_SIZE);
+    } else {
+        // Use manual override
+        s_divider = config->ble_mag_divider;
+    }
 }
 
 uint8_t MAG_BLE_GetMask(void)
@@ -44,12 +56,12 @@ void MAG_BLE_SetMask(uint8_t mask)
     s_mask = mask;
 }
 
-uint8_t MAG_BLE_GetDivider(void)
+uint16_t MAG_BLE_GetDivider(void)
 {
     return s_divider;
 }
 
-void MAG_BLE_SetDivider(uint8_t divider)
+void MAG_BLE_SetDivider(uint16_t divider)
 {
     if (divider == 0) divider = 1;  /* Minimum divider is 1 */
     s_divider = divider;

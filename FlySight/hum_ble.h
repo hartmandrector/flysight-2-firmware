@@ -21,35 +21,38 @@
 **  Website: http://flysight.ca/                                          **
 ****************************************************************************/
 
-#ifndef BARO_BLE_H_
-#define BARO_BLE_H_
+#ifndef HUM_BLE_H_
+#define HUM_BLE_H_
 
 #include <stdint.h>
+
 #include "stm32wbxx_hal.h"
-#include "baro.h"
+#include "hum.h"
 #include "config.h"
 
 /* ------------------------------------------------------------------ */
 /* Packet layout control                                              */
 /* ------------------------------------------------------------------ */
-#define BARO_BLE_MAX_LEN            12u
+
+#define HUM_BLE_MAX_LEN            12u
 
 /* Bit-layout of mask byte (MSB first) */
-#define BARO_BLE_BIT_TIME           0x80u
-#define BARO_BLE_BIT_PRESSURE       0x40u
-#define BARO_BLE_BIT_TEMPERATURE    0x20u
+#define HUM_BLE_BIT_TIME           0x80u
+#define HUM_BLE_BIT_HUMIDITY       0x40u
+#define HUM_BLE_BIT_TEMPERATURE    0x20u
 
 /* Default mask: all fields enabled */
-#define BARO_BLE_DEFAULT_MASK       0xE0u
+#define HUM_BLE_DEFAULT_MASK       0xE0u
 
 /* ------------------------------------------------------------------ */
 /* Public API                                                         */
 /* ------------------------------------------------------------------ */
-void     BARO_BLE_Init(const FS_Config_Data_t *config);
-uint8_t  BARO_BLE_GetMask(void);
-void     BARO_BLE_SetMask(uint8_t mask);
-uint16_t BARO_BLE_GetDivider(void);
-void     BARO_BLE_SetDivider(uint16_t divider);
-uint8_t  BARO_BLE_Build(const FS_Baro_Data_t *src, uint8_t *dst);
 
-#endif /* BARO_BLE_H_ */
+void     HUM_BLE_Init(const FS_Config_Data_t *config);
+uint8_t  HUM_BLE_GetMask(void);
+void     HUM_BLE_SetMask(uint8_t mask);
+uint16_t HUM_BLE_GetDivider(void);
+void     HUM_BLE_SetDivider(uint16_t divider);
+uint8_t  HUM_BLE_Build(const FS_Hum_Data_t *src, uint8_t *dst);
+
+#endif /* HUM_BLE_H_ */
