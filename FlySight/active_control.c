@@ -39,6 +39,12 @@
 #include "state.h"
 #include "time.h"
 #include "vbat.h"
+#include "baro_ble.h"
+#include "hum_ble.h"
+#include "accel_ble.h"
+#include "gyro_ble.h"
+#include "mag_ble.h"
+#include "ble_config.h"
 
 #define LED_BLINK_MSEC      900
 #define LED_BLINK_TICKS     (LED_BLINK_MSEC*1000/CFG_TS_TICK_VAL)
@@ -68,6 +74,8 @@ static void FS_ActiveControl_LED_Timer(void)
 
 void FS_ActiveControl_Init(void)
 {
+	const FS_Config_Data_t *config = FS_Config_Get();
+	
 	// Set callback functions
 	FS_GNSS_DataReady_SetCallback(FS_ActiveControl_DataReady_Callback);
 	FS_GNSS_TimeReady_SetCallback(FS_ActiveControl_TimeReady_Callback);
@@ -90,6 +98,13 @@ void FS_ActiveControl_Init(void)
 
 	// Initialize saved GNSS time
 	memset(&savedTime, 0, sizeof(FS_GNSS_Time_t));
+	
+	// Initialize BLE sensor modules with configuration
+	BARO_BLE_Init(config);
+	HUM_BLE_Init(config);
+	ACCEL_BLE_Init(config);
+	GYRO_BLE_Init(config);
+	MAG_BLE_Init(config);
 }
 
 void FS_ActiveControl_DeInit(void)
@@ -188,13 +203,18 @@ void FS_Baro_DataReady_Callback(void)
 
 void FS_Hum_DataReady_Callback(void)
 {
+	const FS_Hum_Data_t *data = FS_Hum_GetData();
+	
 	if (state != FS_CONTROL_ACTIVE) return;
 
 	if (FS_Config_Get()->enable_logging)
 	{
 		// Save to log file
-		FS_Log_WriteHumData(FS_Hum_GetData());
+		FS_Log_WriteHumData(data);
 	}
+	
+	// Update BLE characteristic
+	Custom_HUM_Update(data);
 }
 
 void FS_Mag_DataReady_Callback(void)

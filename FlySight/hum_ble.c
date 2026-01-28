@@ -23,65 +23,65 @@
 
 #include <string.h>
 
-#include "baro_ble.h"
+#include "hum_ble.h"
 #include "ble_config.h"
 #include "sensor_odr.h"
 
-static uint8_t  s_mask = BARO_BLE_DEFAULT_MASK;
+static uint8_t  s_mask = HUM_BLE_DEFAULT_MASK;
 static uint16_t s_divider = 1u;  /* 1 = every sample, 2 = every 2nd sample, etc. */
 
-void BARO_BLE_Init(const FS_Config_Data_t *config)
+void HUM_BLE_Init(const FS_Config_Data_t *config)
 {
-    s_mask = BARO_BLE_DEFAULT_MASK;
+    s_mask = HUM_BLE_DEFAULT_MASK;
     
     // Calculate or use manual divider
-    if (config->ble_baro_divider == 0) {
+    if (config->ble_hum_divider == 0) {
         // Auto-calculate based on ODR
-        s_divider = FS_BLE_CalculateDivider(config->baro_odr, 
-                                             baro_odr_table, 
-                                             BARO_ODR_TABLE_SIZE);
+        s_divider = FS_BLE_CalculateDivider(config->hum_odr, 
+                                             hum_odr_table, 
+                                             HUM_ODR_TABLE_SIZE);
     } else {
         // Use manual override
-        s_divider = config->ble_baro_divider;
+        s_divider = config->ble_hum_divider;
     }
 }
 
-uint8_t BARO_BLE_GetMask(void)
+uint8_t HUM_BLE_GetMask(void)
 {
     return s_mask;
 }
 
-void BARO_BLE_SetMask(uint8_t mask)
+void HUM_BLE_SetMask(uint8_t mask)
 {
     s_mask = mask;
 }
 
-uint16_t BARO_BLE_GetDivider(void)
+uint16_t HUM_BLE_GetDivider(void)
 {
     return s_divider;
 }
 
-void BARO_BLE_SetDivider(uint16_t divider)
+void HUM_BLE_SetDivider(uint16_t divider)
 {
     if (divider == 0) divider = 1;  /* Minimum divider is 1 */
     s_divider = divider;
 }
 
-uint8_t BARO_BLE_Build(const FS_Baro_Data_t *src, uint8_t *dst)
+uint8_t HUM_BLE_Build(const FS_Hum_Data_t *src, uint8_t *dst)
 {
     uint8_t *p = dst;
 
     *p++ = s_mask;                                          /* byte 0 : mask        */
 
-    if (s_mask & BARO_BLE_BIT_TIME) {                       /* time (ms)            */
+    if (s_mask & HUM_BLE_BIT_TIME) {                        /* time (ms)            */
         memcpy(p, &src->time, sizeof(src->time));         p += 4;
     }
 
-    if (s_mask & BARO_BLE_BIT_PRESSURE) {                   /* pressure (Pa * 100)  */
-        memcpy(p, &src->pressure, sizeof(src->pressure)); p += 4;
+    if (s_mask & HUM_BLE_BIT_HUMIDITY) {                    /* humidity (% * 10)    */
+        memcpy(p, &src->humidity, sizeof(src->humidity)); p += 2;
     }
 
-    if (s_mask & BARO_BLE_BIT_TEMPERATURE) {                /* temperature (C * 100)*/
+    if (s_mask & HUM_BLE_BIT_TEMPERATURE) {                 /* temperature (C * 10) */
         memcpy(p, &src->temperature, sizeof(src->temperature)); p += 2;
     }
 

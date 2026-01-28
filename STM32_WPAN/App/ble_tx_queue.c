@@ -103,6 +103,10 @@ void BLE_TX_Queue_SendTxPacket(Custom_STM_Char_Opcode_t opcode,
 		memcpy(tx_buffer, data, length);
 		BLE_TX_Queue_SendNextTxPacket(opcode, length, size_ptr, callback);
 	}
+	else
+	{
+		APP_DBG_MSG("BLE_TX_Queue_SendTxPacket: buffer overflow (dropped)\n");
+	}
 }
 
 static void BLE_TX_Queue_Transmit(void)

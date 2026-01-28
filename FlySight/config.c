@@ -283,7 +283,129 @@ static const char defaultConfig[] =
 		"\n"
 		"AL_Line:      13 ; Course\n"
 		"AL_Units:      0 ; Degrees\n"
-		"AL_Dec:        0 ; Decimal places\n";
+		"AL_Dec:        0 ; Decimal places\n"
+		"\n"
+		"; Sensor Configuration\n"
+		";\n"
+		"; Output Data Rate (ODR) settings control the rate at which sensor\n"
+		"; hardware sends data to the microcontroller. These rates determine\n"
+		"; the data rate in SENSOR.CSV log files and Bluetooth streaming.\n"
+		";\n"
+		"; Each sensor can be individually enabled (1) or disabled (0).\n"
+		"; Disabling a sensor reduces power consumption and turns off both\n"
+		"; logging and Bluetooth transmission for that sensor.\n"
+		";\n"
+		"; GPS Rate (milliseconds):\n"
+		";   1000 = 1 Hz (default)\n"
+		";   500  = 2 Hz\n"
+		";   200  = 5 Hz\n"
+		";   100  = 10 Hz\n"
+		";   50   = 20 Hz (tested, accurate)\n"
+		";   40   = 25 Hz (tested, accurate, maximum recommended)\n"
+		";\n"
+		"; Barometer (LPS22HH) - Baro_ODR:\n"
+		";   0 = Power-down / One-shot\n"
+		";   1 = 1 Hz\n"
+		";   2 = 10 Hz (default)\n"
+		";   3 = 25 Hz\n"
+		";   4 = 50 Hz\n"
+		";   5 = 75 Hz\n"
+		";   6 = 100 Hz (maximum)\n"
+		";   7 = 200 Hz (low-noise mode, high power)\n"
+		";\n"
+		"Enable_Baro:   1 ; Enable barometer (0 = off, 1 = on)\n"
+		"Baro_ODR:      2 ; 10 Hz\n"
+		"\n"
+		"; Humidity (HTS221/SHT4x) - Hum_ODR:\n"
+		";   0 = Power-down / One-shot\n"
+		";   1 = 1 Hz (default)\n"
+		";   2 = 7 Hz (HTS221 only)\n"
+		";   3 = 12.5 Hz (HTS221 maximum)\n"
+		";\n"
+		"Enable_Hum:    1 ; Enable humidity sensor (0 = off, 1 = on)\n"
+		"Hum_ODR:       1 ; 1 Hz\n"
+		"\n"
+		"; Magnetometer (LIS2MDL) - Mag_ODR:\n"
+		";   0 = 10 Hz (default)\n"
+		";   1 = 20 Hz\n"
+		";   2 = 50 Hz\n"
+		";   3 = 100 Hz (maximum)\n"
+		";\n"
+		"Enable_Mag:    1 ; Enable magnetometer (0 = off, 1 = on)\n"
+		"Mag_ODR:       0 ; 10 Hz\n"
+		"\n"
+		"; Accelerometer (LSM6DSO) - Accel_ODR:\n"
+		";   0  = Power-down\n"
+		";   1  = 12.5 Hz (default, low-power)\n"
+		";   2  = 26 Hz (low-power)\n"
+		";   3  = 52 Hz (low-power)\n"
+		";   4  = 104 Hz (normal)\n"
+		";   5  = 208 Hz (normal)\n"
+		";   6  = 416 Hz (high-performance)\n"
+		";   7  = 833 Hz (high-performance)\n"
+		";   8  = 1666 Hz (high-performance)\n"
+		";   9  = 3333 Hz (high-performance)\n"
+		";   10 = 6666 Hz (high-performance, maximum)\n"
+		";   11 = 1.6 Hz (ultra-low-power)\n"
+		";\n"
+		"Enable_IMU:    1 ; Enable IMU (accel + gyro) (0 = off, 1 = on)\n"
+		"Accel_ODR:     1 ; 12.5 Hz\n"
+		"Accel_FS:      0 ; Accelerometer full scale\n"
+		"                 ;   0 = ±2 g\n"
+		"                 ;   1 = ±4 g\n"
+		"                 ;   2 = ±8 g\n"
+		"                 ;   3 = ±16 g\n"
+		"\n"
+		"; Gyroscope (LSM6DSO) - Gyro_ODR:\n"
+		";   0  = Power-down\n"
+		";   1  = 12.5 Hz (default, low-power)\n"
+		";   2  = 26 Hz (low-power)\n"
+		";   3  = 52 Hz (low-power)\n"
+		";   4  = 104 Hz (normal)\n"
+		";   5  = 208 Hz (normal)\n"
+		";   6  = 416 Hz (high-performance)\n"
+		";   7  = 833 Hz (high-performance)\n"
+		";   8  = 1666 Hz (high-performance)\n"
+		";   9  = 3333 Hz (high-performance)\n"
+		";   10 = 6666 Hz (high-performance, maximum)\n"
+		";\n"
+		"; Note: Gyro_ODR values 0-10 only. ODR value 11 (1.6 Hz)\n"
+		";       is not supported for gyroscope.\n"
+		";\n"
+		"Gyro_ODR:      1 ; 12.5 Hz\n"
+		"Gyro_FS:       0 ; Gyroscope full scale\n"
+		"                 ;   0 = ±250 dps\n"
+		"                 ;   1 = ±500 dps\n"
+		"                 ;   2 = ±1000 dps\n"
+		"                 ;   3 = ±2000 dps\n"
+		"\n"
+		"; Bluetooth BLE Divider Settings\n"
+		";\n"
+		"; These dividers control the rate at which sensor data is transmitted\n"
+		"; over Bluetooth Low Energy. The BLE transmission rate equals:\n"
+		";\n"
+		";   BLE_Rate = Hardware_Rate / Divider\n"
+		";\n"
+		"; Setting to 0 enables auto-calculation, which targets ≤15 Hz per sensor\n"
+		"; to leave sufficient bandwidth for GPS data (which dominates the BLE budget).\n"
+		";\n"
+		"; GPS transmission rate is controlled by the 'Rate' parameter above and\n"
+		"; does not have a separate BLE divider.\n"
+		";\n"
+		"; Examples:\n"
+		";   Accel_ODR: 6 (416 Hz), BLE_Accel_Divider: 0 → Auto (28) → 14.9 Hz BLE\n"
+		";   Accel_ODR: 1 (12.5 Hz), BLE_Accel_Divider: 0 → Auto (1) → 12.5 Hz BLE\n"
+		";   Baro_ODR: 2 (10 Hz), BLE_Baro_Divider: 1 → 10 Hz BLE (no divider)\n"
+		";\n"
+		"; WARNING: Setting manual dividers too low may exceed BLE bandwidth limits\n"
+		";          (~1500 bytes/sec safe), causing buffer overrun and connection loss.\n"
+		";          Default (0 = auto) is recommended for all configurations.\n"
+		";\n"
+		"BLE_Baro_Divider:  0 ; Auto-calculate (recommended)\n"
+		"BLE_Hum_Divider:   0 ; Auto-calculate (recommended)\n"
+		"BLE_Accel_Divider: 0 ; Auto-calculate (recommended)\n"
+		"BLE_Gyro_Divider:  0 ; Auto-calculate (recommended)\n"
+		"BLE_Mag_Divider:   0 ; Auto-calculate (recommended)\n";
 
 void FS_Config_Init(void)
 {
@@ -347,6 +469,12 @@ void FS_Config_Init(void)
 	config.accel_fs       = 1;
 	config.gyro_odr       = 1;
 	config.gyro_fs        = 3;
+
+	config.ble_baro_divider  = 0;  // Auto-calculate
+	config.ble_hum_divider   = 0;  // Auto-calculate
+	config.ble_accel_divider = 0;  // Auto-calculate
+	config.ble_gyro_divider  = 0;  // Auto-calculate
+	config.ble_mag_divider   = 0;  // Auto-calculate
 
 	config.lat            = 0;
 	config.lon            = 0;
@@ -454,6 +582,12 @@ FS_Config_Result_t FS_Config_Read(const char *filename)
 		HANDLE_VALUE("Accel_FS",  config.accel_fs,     val, val >= 0 && val <= 3);
 		HANDLE_VALUE("Gyro_ODR",  config.gyro_odr,     val, val >= 0 && val <= 10);
 		HANDLE_VALUE("Gyro_FS",   config.gyro_fs,      val, val >= 0 && val <= 3);
+
+		HANDLE_VALUE("BLE_Baro_Divider",  config.ble_baro_divider,  val, val >= 0 && val <= 65535);
+		HANDLE_VALUE("BLE_Hum_Divider",   config.ble_hum_divider,   val, val >= 0 && val <= 65535);
+		HANDLE_VALUE("BLE_Accel_Divider", config.ble_accel_divider, val, val >= 0 && val <= 65535);
+		HANDLE_VALUE("BLE_Gyro_Divider",  config.ble_gyro_divider,  val, val >= 0 && val <= 65535);
+		HANDLE_VALUE("BLE_Mag_Divider",   config.ble_mag_divider,   val, val >= 0 && val <= 65535);
 
 		HANDLE_VALUE("Lat",       config.lat,          val, val >= -900000000 && val <= 900000000);
 		HANDLE_VALUE("Lon",       config.lon,          val, val >= -1800000000 && val <= 1800000000);

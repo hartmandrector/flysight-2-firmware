@@ -33,6 +33,7 @@
 #include "start_control.h"
 #include "gnss_ble.h"
 #include "baro_ble.h"
+#include "hum_ble.h"
 #include "accel_ble.h"
 #include "gyro_ble.h"
 #include "mag_ble.h"
@@ -106,6 +107,8 @@ static uint32_t rx_read_index, rx_write_index;
 static uint8_t gnss_pv_packet[GNSS_BLE_MAX_LEN];
 static uint8_t baro_pv_packet[BARO_BLE_MAX_LEN];
 static uint8_t baro_sample_counter = 0;
+static uint8_t hum_pv_packet[HUM_BLE_MAX_LEN];
+static uint8_t hum_sample_counter = 0;
 static uint8_t accel_pv_packet[ACCEL_BLE_MAX_LEN];
 static uint8_t accel_sample_counter = 0;
 static uint8_t gyro_pv_packet[GYRO_BLE_MAX_LEN];
@@ -1040,6 +1043,29 @@ void Custom_MAG_Update(const FS_Mag_Data_t *current)
     BLE_TX_Queue_SendTxPacket(CUSTOM_STM_SD_MAG_MEASUREMENT,
         mag_pv_packet, length, &SizeSd_Mag_Measurement, 0);
   }
+}
+
+void Custom_HUM_Update(const FS_Hum_Data_t *current)
+{
+  /* Decimation: only send every Nth sample */
+  uint16_t divider = HUM_BLE_GetDivider();
+  if (++hum_sample_counter < divider)
+  {
+    return;
+  }
+  hum_sample_counter = 0;
+
+  uint8_t length = HUM_BLE_Build(current, hum_pv_packet);
+
+  /* Note: Humidity characteristic not yet added to BLE service */
+  /* When SD_HUM_Measurement characteristic is added, enable this: */
+  /*
+  if (Custom_App_Context.Sd_hum_measurement_Notification_Status)
+  {
+    BLE_TX_Queue_SendTxPacket(CUSTOM_STM_SD_HUM_MEASUREMENT,
+        hum_pv_packet, length, &SizeSd_Hum_Measurement, 0);
+  }
+  */
 }
 
 void Custom_Start_Update(uint16_t year, uint8_t month, uint8_t day,

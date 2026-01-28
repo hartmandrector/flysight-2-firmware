@@ -164,6 +164,12 @@ typedef struct
 	uint8_t  gyro_odr;
 	uint8_t  gyro_fs;
 
+	uint16_t ble_baro_divider;   // BLE divider for barometer (0 = auto-calculate)
+	uint16_t ble_hum_divider;    // BLE divider for humidity (0 = auto-calculate)
+	uint16_t ble_accel_divider;  // BLE divider for accelerometer (0 = auto-calculate)
+	uint16_t ble_gyro_divider;   // BLE divider for gyroscope (0 = auto-calculate)
+	uint16_t ble_mag_divider;    // BLE divider for magnetometer (0 = auto-calculate)
+
 	int32_t  lat;
 	int32_t  lon;
 	int16_t  bearing;

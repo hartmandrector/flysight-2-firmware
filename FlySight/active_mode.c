@@ -39,6 +39,7 @@
 #include "sensor.h"
 #include "state.h"
 #include "vbat.h"
+#include "ble_config.h"
 
 extern UART_HandleTypeDef huart1;
 extern ADC_HandleTypeDef hadc1;
@@ -68,6 +69,16 @@ void FS_ActiveMode_Init(void)
 	if (f_chdir("/config") == FR_OK)
 	{
 		FS_Config_Read(FS_State_Get()->config_filename);
+	}
+
+	/* Validate BLE configuration */
+	{
+		const char *error = FS_BLE_ValidateConfig(FS_Config_Get());
+		if (error != NULL)
+		{
+			isSystemHealthy = false;
+			FS_Log_WriteEvent("BLE config validation failed: %s", error);
+		}
 	}
 
 	if (FS_Config_Get()->al_mode != 0)
