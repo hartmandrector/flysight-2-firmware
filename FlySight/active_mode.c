@@ -73,11 +73,11 @@ void FS_ActiveMode_Init(void)
 
 	/* Validate BLE configuration */
 	{
-		const char *error = FS_BLE_ValidateConfig(FS_Config_Get());
-		if (error != NULL)
+		FS_BLE_ValidationResult_t result = FS_BLE_ValidateConfig(FS_Config_Get());
+		if (!result.valid)
 		{
 			isSystemHealthy = false;
-			FS_Log_WriteEvent("BLE config validation failed: %s", error);
+			FS_Log_WriteEvent("BLE config validation failed: %s", result.error_msg);
 		}
 	}
 

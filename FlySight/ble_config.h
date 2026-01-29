@@ -96,4 +96,27 @@ typedef struct {
  */
 FS_BLE_ValidationResult_t FS_BLE_ValidateConfig(const FS_Config_Data_t *config);
 
+/*
+ * Auto-calculate BLE dividers with GPS awareness
+ *
+ * Calculates appropriate dividers for all sensors set to 0 (auto mode),
+ * taking GPS bandwidth into account. Ensures total bandwidth stays within
+ * BLE_SAFE_THROUGHPUT_LIMIT.
+ *
+ * Algorithm:
+ *   1. Calculate GPS bandwidth from config->rate
+ *   2. Subtract from total budget to get remaining sensor budget
+ *   3. Calculate initial dividers for each sensor (target 15Hz each)
+ *   4. If total exceeds budget, scale all dividers proportionally
+ *   5. Update config with calculated dividers (only for divider=0 sensors)
+ *
+ * Parameters:
+ *   config - Pointer to configuration structure (modified in-place)
+ *
+ * Note: Only modifies dividers that are set to 0. User-specified dividers
+ *       are left unchanged. Call this after parsing config but before
+ *       validation.
+ */
+void FS_BLE_AutoCalculateDividers(FS_Config_Data_t *config);
+
 #endif /* BLE_CONFIG_H_ */

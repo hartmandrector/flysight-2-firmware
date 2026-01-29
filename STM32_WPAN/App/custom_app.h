@@ -35,6 +35,7 @@ extern "C" {
 #include "baro.h"
 #include "imu.h"
 #include "mag.h"
+#include "hum.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
