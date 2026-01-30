@@ -518,6 +518,7 @@ FlySight 2 also implements standard BLE services:
 | GNSS Measurement        | `SD_GNSS_Measurement`     | `00000000-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 44 (Var)           |
 | Sensor Data Control     | `SD_Control_Point`        | `00000006-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Write, Indicate        | 20 (Var)           |
 | Baro Measurement        | `SD_BARO_Measurement`     | `00000008-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 10 (Var)           |
+| Humidity Measurement    | `SD_HUM_Measurement`      | `0000000C-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 12 (Var)           |
 | Accel Measurement       | `SD_ACCEL_Measurement`    | `00000009-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 20 (Var)           |
 | Gyro Measurement        | `SD_GYRO_Measurement`     | `0000000A-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 28 (Var)           |
 | Mag Measurement         | `SD_MAG_Measurement`      | `0000000B-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 14 (Var)           |

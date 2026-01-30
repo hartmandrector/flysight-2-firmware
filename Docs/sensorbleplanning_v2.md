@@ -102,7 +102,7 @@ All sensors have user-configurable Output Data Rates in config.txt:
 | Barometer | 11 bytes | Mask + timestamp + pressure + temp |
 | Humidity | 9 bytes | Mask + timestamp + humidity + temp |
 | Accelerometer | 19 bytes | Mask + timestamp + XYZ + temp |
-| Gyroscope | 19 bytes | Mask + timestamp + XYZ + temp |
+| Gyroscope | 27 bytes | Mask + timestamp + XYZ + temp + quaternion |
 | Magnetometer | 13 bytes | Mask + timestamp + XYZ + temp |
 
 ---
@@ -175,11 +175,11 @@ Step 3: Remaining budget
 
 Step 4: Try auto sensors at full ODR (divider=1)
   Accel:  12.5 Hz  19 = 238 bytes/sec
-  Gyro:   12.5 Hz  19 = 238 bytes/sec
-  Baro:   10 Hz  11 = 110 bytes/sec
-  Mag:    10 Hz  13 = 130 bytes/sec
-  Hum:    1 Hz  9 = 9 bytes/sec
-  Auto_bandwidth = 725 bytes/sec
+  Gyro:   12.5 Hz × 27 = 338 bytes/sec
+  Baro:   10 Hz × 11 = 110 bytes/sec
+  Mag:    10 Hz × 13 = 130 bytes/sec
+  Hum:    1 Hz × 9 = 9 bytes/sec
+  Auto_bandwidth = 825 bytes/sec
 
 Step 5: Check if scaling needed
   725 < 1280  No scaling needed!
@@ -212,31 +212,31 @@ Step 3: Remaining budget
 
 Step 4: Try auto sensors at full ODR
   Accel:  416 Hz  19 = 7,904 bytes/sec
-  Gyro:   416 Hz  19 = 7,904 bytes/sec
-  Baro:   10 Hz  11 = 110 bytes/sec
-  Mag:    10 Hz  13 = 130 bytes/sec
-  Hum:    1 Hz  9 = 9 bytes/sec
-  Auto_bandwidth = 16,057 bytes/sec
+  Gyro:   416 Hz × 27 = 11,232 bytes/sec
+  Baro:   10 Hz × 11 = 110 bytes/sec
+  Mag:    10 Hz × 13 = 130 bytes/sec
+  Hum:    1 Hz × 9 = 9 bytes/sec
+  Auto_bandwidth = 19,385 bytes/sec
 
 Step 5: Scaling required!
-  Scale_factor = 16,057 / 1,280 = 12.54
+  Scale_factor = 19,385 / 1,280 = 15.14
   
-  Accel:  divider = ceil(1  12.54) = 13  416/13 = 32.0 Hz  19 = 608 bytes/sec
-  Gyro:   divider = ceil(1  12.54) = 13  416/13 = 32.0 Hz  19 = 608 bytes/sec
+  Accel:  divider = ceil(1 × 15.14) = 16 → 416/16 = 26.0 Hz × 19 = 494 bytes/sec
+  Gyro:   divider = ceil(1 × 15.14) = 16 → 416/16 = 26.0 Hz × 27 = 702 bytes/sec
   Baro/Mag/Hum similarly scaled
   
-  Auto_bandwidth after scaling = 1,235 bytes/sec
+  Auto_bandwidth after scaling = 1,255 bytes/sec
 
 Final Result:
-  All dividers = 13
-  Total: 220 + 1,235 = 1,455 bytes/sec (97% of limit)
+  All dividers = 16
+  Total: 220 + 1,255 = 1,475 bytes/sec (98% of limit)
   
 BLE Rates:
   GPS: 5 Hz, Accel: 32 Hz, Gyro: 32 Hz
-  Baro: 0.77 Hz, Mag: 0.77 Hz, Hum: 0.08 Hz
+  Baro: 0.62 Hz, Mag: 0.62 Hz, Hum: 0.06 Hz
 ```
 
-**Key Insight**: High-rate sensors maintain proportionally higher BLE rates (32 Hz vs 0.77 Hz).
+**Key Insight**: High-rate sensors maintain proportionally higher BLE rates (26 Hz vs 0.62 Hz).
 
 ---
 
@@ -247,7 +247,7 @@ BLE Rates:
 Step 1: GPS bandwidth = 220 bytes/sec
 
 Step 2: Manual divider bandwidth
-  Accel: 416 / 5 = 83.2 Hz  19 = 1,581 bytes/sec
+  Accel: 416 / 5 = 83.2 Hz × 19 = 1,581 bytes/sec
 
 Step 3: Remaining budget = 1500 - 220 - 1,581 = -301 (negative!)
 

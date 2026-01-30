@@ -182,7 +182,7 @@ Sensor HW → Data Ready Interrupt → Callback → Custom_SENSOR_Update()
 | Baro | 12 bytes | 11 bytes (mask + time 4 + pressure 4 + temp 2) | Implemented (PR #62) |
 | Hum | 12 bytes | 9 bytes (mask + time 4 + humidity 2 + temp 2) | **Implemented (PR #62)** |
 | Accel | 20 bytes | 19 bytes (mask + time 4 + xyz 12 + temp 2) | Implemented (PR #62) |
-| Gyro | 20 bytes | 19 bytes (mask + time 4 + xyz 12 + temp 2) | Implemented (PR #62) |
+| Gyro | 28 bytes | 27 bytes (mask + time 4 + xyz 12 + temp 2 + quaternion 8) | Implemented (PR #62) |
 | Mag | 14 bytes | 13 bytes (mask + time 4 + xyz 6 + temp 2) | Implemented (PR #62) |
 
 ### Safe Transmission Budget
@@ -197,9 +197,9 @@ Sensor HW → Data Ready Interrupt → Callback → Custom_SENSOR_Update()
 - Baro: 11 bytes × 10Hz = **110 bytes/sec** (ODR=2, no divider needed)
 - Hum: 9 bytes × 1Hz = **9 bytes/sec** (ODR=1, no divider needed)
 - Accel: 19 bytes × 12.5Hz = **238 bytes/sec** (ODR=1, no divider needed)
-- Gyro: 19 bytes × 12.5Hz = **238 bytes/sec** (ODR=1, no divider needed)
+- Gyro: 27 bytes × 12.5Hz = **338 bytes/sec** (ODR=1, no divider needed)
 - Mag: 13 bytes × 10Hz = **130 bytes/sec** (ODR=0, no divider needed)
-- **Total**: **~1605 bytes/sec** ⚠️ **Slightly over budget**
+- **Total**: **~1705 bytes/sec** ⚠️ **Over budget - needs divider adjustment**
 
 **Analysis**: This matches real-world user data (TRACK.CSV example). GPS dominates at 58% of total bandwidth. All sensors transmit at their configured hardware rates with no dividers required.
 
@@ -211,9 +211,9 @@ Sensor HW → Data Ready Interrupt → Callback → Custom_SENSOR_Update()
 - Baro: 11 bytes × 1Hz = **11 bytes/sec** (ODR=1, no divider needed)
 - Hum: 9 bytes × 1Hz = **9 bytes/sec** (ODR=1, no divider needed)
 - Accel: 19 bytes × 12.5Hz = **238 bytes/sec** (ODR=1, no divider needed)
-- Gyro: 19 bytes × 12.5Hz = **238 bytes/sec** (ODR=1, no divider needed)
+- Gyro: 27 bytes × 12.5Hz = **338 bytes/sec** (ODR=1, no divider needed)
 - Mag: 13 bytes × 10Hz = **130 bytes/sec** (ODR=0, no divider needed)
-- **Total**: **~846 bytes/sec** ✓ **Excellent margin - 56% of budget**
+- **Total**: **~946 bytes/sec** ✓ **Good margin - 63% of budget**
 
 **Analysis**: Even with GPS at minimum practical rate, sensor bandwidth usage remains comfortable. This configuration leaves significant headroom for future features or higher sensor rates if needed.
 
@@ -226,18 +226,18 @@ Sensor HW → Data Ready Interrupt → Callback → Custom_SENSOR_Update()
 - Baro: 11 bytes × 100Hz = **1100 bytes/sec** (ODR=6, divider=1) ⚠️
 - Hum: 9 bytes × 12.5Hz = **113 bytes/sec** (ODR=3, divider=1)
 - Accel: 19 bytes × 416Hz = **7904 bytes/sec** (ODR=6, divider=1) ❌
-- Gyro: 19 bytes × 416Hz = **7904 bytes/sec** (ODR=6, divider=1) ❌
+- Gyro: 27 bytes × 416Hz = **11,232 bytes/sec** (ODR=6, divider=1) ❌
 - Mag: 13 bytes × 100Hz = **1300 bytes/sec** (ODR=3, divider=1) ⚠️
-- **Total**: **~19,421 bytes/sec** ❌ **MASSIVE OVERRUN - BLE will fail**
+- **Total**: **~22,749 bytes/sec** ❌ **MASSIVE OVERRUN - BLE will fail**
 
 **With auto-calculated dividers** (targets 15Hz BLE per sensor):
 - GNSS: 44 bytes × 25Hz = **1100 bytes/sec** (Rate: 40ms, no divider) ⚠️
 - Baro: 11 bytes × 14.3Hz = **157 bytes/sec** (ODR=6: 100Hz, **divider=7**)
 - Hum: 9 bytes × 12.5Hz = **113 bytes/sec** (ODR=3: 12.5Hz, **divider=1**)
 - Accel: 19 bytes × 14.9Hz = **283 bytes/sec** (ODR=6: 416Hz, **divider=28**)
-- Gyro: 19 bytes × 14.9Hz = **283 bytes/sec** (ODR=6: 416Hz, **divider=28**)
+- Gyro: 27 bytes × 14.9Hz = **402 bytes/sec** (ODR=6: 416Hz, **divider=28**)
 - Mag: 13 bytes × 14.3Hz = **186 bytes/sec** (ODR=3: 100Hz, **divider=7**)
-- **Total**: **~2122 bytes/sec** ⚠️ **Still exceeds 1500 budget**
+- **Total**: **~2241 bytes/sec** ⚠️ **Still exceeds 1500 budget**
 
 **Analysis**: Even with auto-calculated dividers, GPS at 25Hz (1100 bytes/sec) leaves insufficient headroom for all sensors at high ODR. **Validation must fail** and suggest either:
 1. Reduce GPS rate to 20Hz or lower, OR
