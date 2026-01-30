@@ -9,4 +9,4 @@ echo.
 echo #define GIT_TAG "%GIT_TAG%"
 echo.
 echo #endif // VERSION_H
-) > ..\FlySight\version.h
+) > FlySight\version.h
