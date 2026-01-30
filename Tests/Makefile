@@ -1,16 +1,29 @@
 # tests/Makefile
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -g
-TARGET = test_time
-SOURCE = test_time.c
+CFLAGS = -Wall -Wextra -std=c99 -g -I../FlySight -I../Core/Inc
+LDFLAGS = -lm
 
-$(TARGET): $(SOURCE)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCE)
+# Targets
+TEST_TIME = test_time
+CALC_BLE = calc_ble_dividers
 
-run: $(TARGET)
-	./$(TARGET)
+all: $(TEST_TIME) $(CALC_BLE)
+
+# Test time normalization
+$(TEST_TIME): test_time.c
+	$(CC) $(CFLAGS) -o $(TEST_TIME) test_time.c
+
+# BLE divider calculator
+$(CALC_BLE): calc_ble_dividers.c ../FlySight/ble_config.c
+	$(CC) $(CFLAGS) -o $(CALC_BLE) calc_ble_dividers.c $(LDFLAGS)
+
+run_test: $(TEST_TIME)
+	./$(TEST_TIME)
+
+run_calc: $(CALC_BLE)
+	./$(CALC_BLE)
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TEST_TIME) $(CALC_BLE)
 
-.PHONY: run clean
+.PHONY: all run_test run_calc clean

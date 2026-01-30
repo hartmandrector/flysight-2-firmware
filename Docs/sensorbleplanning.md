@@ -180,7 +180,7 @@ Sensor HW → Data Ready Interrupt → Callback → Custom_SENSOR_Update()
 |--------|----------|---------------------------|--------|
 | GNSS | 44 bytes | 44 bytes | Already implemented |
 | Baro | 12 bytes | 11 bytes (mask + time 4 + pressure 4 + temp 2) | Implemented (PR #62) |
-| Hum | 12 bytes | 9 bytes (mask + time 4 + humidity 2 + temp 2) | **TODO: Add in this PR** |
+| Hum | 12 bytes | 9 bytes (mask + time 4 + humidity 2 + temp 2) | **Implemented (PR #62)** |
 | Accel | 20 bytes | 19 bytes (mask + time 4 + xyz 12 + temp 2) | Implemented (PR #62) |
 | Gyro | 20 bytes | 19 bytes (mask + time 4 + xyz 12 + temp 2) | Implemented (PR #62) |
 | Mag | 14 bytes | 13 bytes (mask + time 4 + xyz 6 + temp 2) | Implemented (PR #62) |
@@ -644,8 +644,6 @@ FS_BLE_ValidationResult_t FS_BLE_ValidateConfig(const FS_Config_Data_t *config)
 - [x] Add validation function (must include GPS in budget calculation)
 
 **Status**: ✅ COMPLETE
-
-**Pending GATT Update**: Humidity BLE characteristic (SD_HUM_Measurement) needs to be added to GATT service definition. `Custom_HUM_Update()` function is implemented in [custom_app.c](../STM32_WPAN/App/custom_app.c) with transmission commented out until characteristic is added to the service.
 
 ### Phase 3: Configuration Integration ✅ COMPLETE
 - [x] Add config.txt parsing for BLE dividers (baro, hum, accel, gyro, mag)

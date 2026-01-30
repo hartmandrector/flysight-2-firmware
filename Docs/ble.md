@@ -302,6 +302,22 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
             *   If `BARO_BLE_BIT_PRESSURE` set: `pressure` (int32_t). Pressure in Pa. (4 bytes)
             *   If `BARO_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
 
+    *   **`SD_HUM_Measurement` (Humidity)**
+        *   UUID: `0000000C-8e22-4541-9d4c-21edae82ed19`
+        *   Properties: **Read, Notify**
+        *   Permissions: Encrypted Read/Write required.
+        *   Usage: Streams humidity sensor data. Updates only when FlySight is in Active Mode. Central must enable notifications.
+        *   Max Length: 12 bytes (`SizeSd_Hum_Measurement`). Variable length.
+        *   **Data Format (Little Endian):**
+            *   Byte 0: `mask` (uint8). Bitmask indicating which fields are present.
+                *   `0x80` (`HUM_BLE_BIT_TIME`): Timestamp included.
+                *   `0x40` (`HUM_BLE_BIT_HUMIDITY`): Humidity included.
+                *   `0x20` (`HUM_BLE_BIT_TEMPERATURE`): Temperature included.
+            *   If `HUM_BLE_BIT_TIME` set: `time` (uint32_t). Timestamp in ms. (4 bytes)
+            *   If `HUM_BLE_BIT_HUMIDITY` set: `humidity` (uint16_t). Relative humidity in 0.1%. (2 bytes)
+            *   If `HUM_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
+        *   Default Mask: `0xE0` (all fields enabled).
+
     *   **`SD_ACCEL_Measurement` (Accelerometer)**
         *   UUID: `00000009-8e22-4541-9d4c-21edae82ed19`
         *   Properties: **Read, Notify**

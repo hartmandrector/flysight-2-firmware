@@ -53,6 +53,7 @@ typedef struct
   uint8_t               Sd_gnss_measurement_Notification_Status;
   uint8_t               Sd_control_point_Indication_Status;
   uint8_t               Sd_baro_measurement_Notification_Status;
+  uint8_t               Sd_hum_measurement_Notification_Status;
   uint8_t               Sd_accel_measurement_Notification_Status;
   uint8_t               Sd_gyro_measurement_Notification_Status;
   uint8_t               Sd_mag_measurement_Notification_Status;
@@ -262,6 +263,31 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
       /* USER CODE BEGIN CUSTOM_STM_SD_BARO_MEASUREMENT_NOTIFY_DISABLED_EVT */
       Custom_App_Context.Sd_baro_measurement_Notification_Status = 0;
       /* USER CODE END CUSTOM_STM_SD_BARO_MEASUREMENT_NOTIFY_DISABLED_EVT */
+      break;
+
+    case CUSTOM_STM_SD_HUM_MEASUREMENT_READ_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_SD_HUM_MEASUREMENT_READ_EVT */
+      {
+        /* Read current HUM value directly from sensor */
+        const FS_Hum_Data_t *data = FS_Hum_GetData();
+        uint8_t packet[HUM_BLE_MAX_LEN];
+        uint8_t len = HUM_BLE_Build(data, packet);
+        Custom_STM_App_Update_Char(CUSTOM_STM_SD_HUM_MEASUREMENT, packet);
+      }
+      /* USER CODE END CUSTOM_STM_SD_HUM_MEASUREMENT_READ_EVT */
+      break;
+
+    case CUSTOM_STM_SD_HUM_MEASUREMENT_NOTIFY_ENABLED_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_SD_HUM_MEASUREMENT_NOTIFY_ENABLED_EVT */
+      Custom_App_Context.Sd_hum_measurement_Notification_Status = 1;
+      hum_sample_counter = 0;  /* Reset decimation counter */
+      /* USER CODE END CUSTOM_STM_SD_HUM_MEASUREMENT_NOTIFY_ENABLED_EVT */
+      break;
+
+    case CUSTOM_STM_SD_HUM_MEASUREMENT_NOTIFY_DISABLED_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_SD_HUM_MEASUREMENT_NOTIFY_DISABLED_EVT */
+      Custom_App_Context.Sd_hum_measurement_Notification_Status = 0;
+      /* USER CODE END CUSTOM_STM_SD_HUM_MEASUREMENT_NOTIFY_DISABLED_EVT */
       break;
 
     case CUSTOM_STM_SD_ACCEL_MEASUREMENT_READ_EVT:
@@ -523,6 +549,7 @@ void Custom_APP_Init(void)
   Custom_App_Context.Sd_gnss_measurement_Notification_Status = 0;
   Custom_App_Context.Sd_control_point_Indication_Status = 0;
   Custom_App_Context.Sd_baro_measurement_Notification_Status = 0;
+  Custom_App_Context.Sd_hum_measurement_Notification_Status = 0;
 
   /* Starter_Pistol */
   Custom_App_Context.Sp_control_point_Indication_Status = 0;
@@ -909,6 +936,7 @@ static void Custom_CRS_OnDisconnect(void)
   Custom_App_Context.Sd_gnss_measurement_Notification_Status = 0;
   Custom_App_Context.Sd_control_point_Indication_Status = 0;
   Custom_App_Context.Sd_baro_measurement_Notification_Status = 0;
+  Custom_App_Context.Sd_hum_measurement_Notification_Status = 0;
 
   Custom_App_Context.Sp_control_point_Indication_Status = 0;
   Custom_App_Context.Sp_result_Indication_Status = 0;
@@ -1057,15 +1085,11 @@ void Custom_HUM_Update(const FS_Hum_Data_t *current)
 
   uint8_t length = HUM_BLE_Build(current, hum_pv_packet);
 
-  /* Note: Humidity characteristic not yet added to BLE service */
-  /* When SD_HUM_Measurement characteristic is added, enable this: */
-  /*
   if (Custom_App_Context.Sd_hum_measurement_Notification_Status)
   {
     BLE_TX_Queue_SendTxPacket(CUSTOM_STM_SD_HUM_MEASUREMENT,
         hum_pv_packet, length, &SizeSd_Hum_Measurement, 0);
   }
-  */
 }
 
 void Custom_Start_Update(uint16_t year, uint8_t month, uint8_t day,
