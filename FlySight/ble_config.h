@@ -40,8 +40,8 @@
 /* BLE Safe Throughput Budget (bytes/sec) */
 #define BLE_SAFE_THROUGHPUT_LIMIT  1500
 
-/* Target BLE transmission rate per sensor (Hz) */
-#define BLE_TARGET_RATE_HZ         15
+/* Minimum BLE transmission rate per sensor (Hz) */
+#define BLE_MIN_RATE_HZ            0.5
 
 /* GPS packet size (bytes) */
 #define BLE_GPS_PACKET_SIZE        44
@@ -49,8 +49,8 @@
 /*
  * Calculate BLE divider for a sensor
  *
- * Determines the appropriate decimation divider to achieve ≤ 15Hz BLE
- * transmission rate for a sensor, regardless of its hardware ODR.
+ * Returns divider value of 1 (no decimation). Auto-calculation is now
+ * handled by FS_BLE_AutoCalculateDividers() with priority-based logic.
  *
  * Parameters:
  *   odr_setting - ODR configuration value (0-11)
@@ -58,17 +58,24 @@
  *   table_size  - Number of entries in lookup table
  *
  * Returns:
- *   Divider value (1-65535). Returns 1 if hardware rate ≤ 15Hz or disabled.
- *
- * Examples:
- *   12.5Hz → divider 1 (no decimation)
- *   104Hz  → divider 7 (→ 14.9Hz BLE)
- *   416Hz  → divider 28 (→ 14.9Hz BLE)
- *   6666Hz → divider 445 (→ 15Hz BLE)
+ *   Always returns 1 (no decimation)
  */
 uint16_t FS_BLE_CalculateDivider(uint8_t odr_setting,
                                    const uint16_t *odr_table,
                                    uint8_t table_size);
+
+/*
+ * Calculate maximum divider for minimum rate
+ *
+ * Determines the maximum divider that keeps BLE rate ≥ BLE_MIN_RATE_HZ.
+ *
+ * Parameters:
+ *   hw_rate_hz - Hardware ODR in Hz
+ *
+ * Returns:
+ *   Maximum divider value (1-65535). Returns 1 if hw_rate_hz ≤ BLE_MIN_RATE_HZ.
+ */
+uint16_t FS_BLE_CalculateMaxDivider(uint16_t hw_rate_hz);
 
 /*
  * Validation result structure
@@ -97,21 +104,25 @@ typedef struct {
 FS_BLE_ValidationResult_t FS_BLE_ValidateConfig(const FS_Config_Data_t *config);
 
 /*
- * Auto-calculate BLE dividers with GPS awareness
+ * Auto-calculate BLE dividers with priority-based allocation
  *
- * Calculates appropriate dividers for all sensors set to 0 (auto mode),
- * taking GPS bandwidth into account. Ensures total bandwidth stays within
- * BLE_SAFE_THROUGHPUT_LIMIT.
+ * Priority order:
+ *   1. GPS rate (no divider, controlled by Rate parameter)
+ *   2. Manual sensor dividers (user-specified, non-zero values)
+ *   3. Auto sensor dividers (divider=0, calculated to fit budget)
  *
  * Algorithm:
- *   1. Calculate GPS bandwidth from config->rate
- *   2. Subtract from total budget to get remaining sensor budget
- *   3. Calculate initial dividers for each sensor (target 15Hz each)
- *   4. If total exceeds budget, scale all dividers proportionally
- *   5. Update config with calculated dividers (only for divider=0 sensors)
+ *   1. Calculate GPS + manual divider bandwidth
+ *   2. Try auto sensors at full ODR (divider=1)
+ *   3. If over budget, scale auto dividers by percentage to fit
+ *   4. Enforce minimum rate (BLE_MIN_RATE_HZ) on all sensors
+ *
+ * This respects user ODR choices - sensors run at full rate unless
+ * bandwidth requires throttling. Percentage-based scaling maintains
+ * relative priorities (higher ODR sensors stay higher after scaling).
  *
  * Parameters:
- *   config - Pointer to configuration structure (modified in-place)
+ *   config - Pointer to configuration structure (modified in place)
  *
  * Note: Only modifies dividers that are set to 0. User-specified dividers
  *       are left unchanged. Call this after parsing config but before
