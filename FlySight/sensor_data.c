@@ -32,6 +32,8 @@
 #include "gyro_ble.h"
 #include "mag_ble.h"
 #include "fusion_integration.h" // For Fusion calibration setters
+#include "ble_config.h"       // For validation and auto-calculation
+#include "config.h"           // For FS_Config_Get
 #include "string.h"           // For memcpy
 #include "app_common.h"       // For APP_DBG_MSG (optional)
 #include "dbg_trace.h"
@@ -93,25 +95,56 @@ void SensorData_Handle_SD_ControlPointWrite(
                     uint8_t sensor_id = params[0];
                     uint16_t divider = params[1] | (params[2] << 8); // Little-endian
                     
-                    if (divider == 0) {
-                        status = CP_STATUS_INVALID_PARAMETER; // 0 reserved for auto-calc at boot
-                    } else if (sensor_id == 0) {
-                        BARO_BLE_SetDivider(divider);
-                        status = CP_STATUS_SUCCESS;
-                    } else if (sensor_id == 1) {
-                        HUM_BLE_SetDivider(divider);
-                        status = CP_STATUS_SUCCESS;
-                    } else if (sensor_id == 2) {
-                        ACCEL_BLE_SetDivider(divider);
-                        status = CP_STATUS_SUCCESS;
-                    } else if (sensor_id == 3) {
-                        GYRO_BLE_SetDivider(divider);
-                        status = CP_STATUS_SUCCESS;
-                    } else if (sensor_id == 4) {
-                        MAG_BLE_SetDivider(divider);
-                        status = CP_STATUS_SUCCESS;
-                    } else {
+                    // Validate sensor_id first
+                    if (sensor_id > 4) {
                         status = CP_STATUS_INVALID_PARAMETER; // Invalid sensor_id
+                    } else {
+                        // Create temporary config for validation
+                        FS_Config_Data_t temp_config = *FS_Config_Get();
+                        
+                        // Sync with runtime divider state from sensor modules
+                        // (Control point changes don't update config struct, only sensor modules)
+                        temp_config.ble_baro_divider = BARO_BLE_GetDivider();
+                        temp_config.ble_hum_divider = HUM_BLE_GetDivider();
+                        temp_config.ble_accel_divider = ACCEL_BLE_GetDivider();
+                        temp_config.ble_gyro_divider = GYRO_BLE_GetDivider();
+                        temp_config.ble_mag_divider = MAG_BLE_GetDivider();
+                        
+                        // Apply requested divider to temp config
+                        uint16_t *divider_field = NULL;
+                        switch (sensor_id) {
+                            case 0: divider_field = &temp_config.ble_baro_divider; break;
+                            case 1: divider_field = &temp_config.ble_hum_divider; break;
+                            case 2: divider_field = &temp_config.ble_accel_divider; break;
+                            case 3: divider_field = &temp_config.ble_gyro_divider; break;
+                            case 4: divider_field = &temp_config.ble_mag_divider; break;
+                        }
+                        
+                        // If divider=0, run auto-calculation to get calculated value
+                        if (divider == 0) {
+                            *divider_field = 0; // Set to auto-mode
+                            FS_BLE_AutoCalculateDividers(&temp_config);
+                            divider = *divider_field; // Extract calculated divider
+                        } else {
+                            *divider_field = divider;
+                        }
+                        
+                        // Validate bandwidth with new divider
+                        FS_BLE_ValidationResult_t result = FS_BLE_ValidateConfig(&temp_config);
+                        
+                        if (!result.valid) {
+                            status = CP_STATUS_INVALID_PARAMETER;
+                        } else {
+                            // Apply divider to actual sensor
+                            switch (sensor_id) {
+                                case 0: BARO_BLE_SetDivider(divider); break;
+                                case 1: HUM_BLE_SetDivider(divider); break;
+                                case 2: ACCEL_BLE_SetDivider(divider); break;
+                                case 3: GYRO_BLE_SetDivider(divider); break;
+                                case 4: MAG_BLE_SetDivider(divider); break;
+                            }
+                            status = CP_STATUS_SUCCESS;
+                        }
                     }
                 }
                 break;

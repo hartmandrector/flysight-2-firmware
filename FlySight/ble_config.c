@@ -31,24 +31,30 @@ uint16_t FS_BLE_CalculateDivider(uint8_t odr_setting,
                                    const uint16_t *odr_table,
                                    uint8_t table_size)
 {
-    // Validate inputs
-    if (odr_table == NULL || odr_setting >= table_size) {
-        return 1;  // Default to no decimation on error
+    // Auto-calculation now handled by FS_BLE_AutoCalculateDividers()
+    // This function just returns 1 (no decimation) for compatibility
+    (void)odr_setting;
+    (void)odr_table;
+    (void)table_size;
+    return 1;
+}
+
+uint16_t FS_BLE_CalculateMaxDivider(uint16_t hw_rate_hz)
+{
+    // Calculate maximum divider that keeps BLE rate ≥ BLE_MIN_RATE_HZ
+    if (hw_rate_hz == 0) {
+        return 1;  // Power-down or invalid
     }
     
-    // Get hardware rate from ODR setting
-    uint16_t hw_rate_hz = odr_table[odr_setting];
+    // max_divider = hw_rate_hz / BLE_MIN_RATE_HZ
+    // Use 0.5 Hz minimum to allow integer math: max_div = hw_rate * 2
+    uint16_t max_divider = hw_rate_hz * 2;  // For 0.5 Hz minimum
     
-    // If hardware rate is 0 (power-down) or already ≤ target rate, no division needed
-    if (hw_rate_hz == 0 || hw_rate_hz <= BLE_TARGET_RATE_HZ) {
-        return 1;
+    if (max_divider < 1) {
+        max_divider = 1;
     }
     
-    // Calculate minimum divider to bring rate to ≤ target Hz
-    // Use ceiling division to ensure we don't exceed target
-    uint16_t divider = (hw_rate_hz + BLE_TARGET_RATE_HZ - 1) / BLE_TARGET_RATE_HZ;
-    
-    return divider;
+    return max_divider;
 }
 
 FS_BLE_ValidationResult_t FS_BLE_ValidateConfig(const FS_Config_Data_t *config)
@@ -65,13 +71,12 @@ FS_BLE_ValidationResult_t FS_BLE_ValidateConfig(const FS_Config_Data_t *config)
     }
     
     // Helper macro for each sensor
+    // If divider is 0, assume divider=1 (will be auto-calculated later)
     #define CHECK_SENSOR(enable, odr_field, div_field, odr_table, packet_size) \
         do { \
             if (config->enable) { \
                 uint16_t hz = ODR_TO_HZ(odr_table, sizeof(odr_table)/sizeof(odr_table[0]), config->odr_field); \
-                uint16_t div = (config->div_field == 0) ? \
-                    FS_BLE_CalculateDivider(config->odr_field, odr_table, sizeof(odr_table)/sizeof(odr_table[0])) : \
-                    config->div_field; \
+                uint16_t div = (config->div_field == 0) ? 1 : config->div_field; \
                 if (hz > 0 && div > 0) { \
                     uint16_t ble_hz = hz / div; \
                     total += (ble_hz * packet_size); \
@@ -107,20 +112,20 @@ FS_BLE_ValidationResult_t FS_BLE_ValidateConfig(const FS_Config_Data_t *config)
 
 void FS_BLE_AutoCalculateDividers(FS_Config_Data_t *config)
 {
-    // Step 1: Calculate GPS bandwidth
+    // Priority-based algorithm:
+    // 1. GPS + manual dividers take priority (calculate their bandwidth)
+    // 2. Try auto sensors at full ODR (divider=1)
+    // 3. If over budget, scale auto dividers by percentage to fit
+    // 4. Enforce minimum rate on all sensors
+    
+    // Step 1: Calculate GPS bandwidth (highest priority)
     uint32_t gps_bandwidth = 0;
     if (config->rate > 0 && config->enable_gnss) {
         uint16_t gps_hz = 1000 / config->rate;
         gps_bandwidth = gps_hz * BLE_GPS_PACKET_SIZE;
     }
     
-    // Step 2: Calculate remaining budget for sensors
-    int32_t sensor_budget = BLE_SAFE_THROUGHPUT_LIMIT - gps_bandwidth;
-    if (sensor_budget < 100) {
-        sensor_budget = 100;  // Minimum budget for at least some sensor data
-    }
-    
-    // Step 3: Calculate initial dividers (target 15Hz per sensor) and estimate bandwidth
+    // Define sensor array for calculations
     typedef struct {
         bool enabled;
         uint16_t *divider_ptr;  // Pointer to config field
@@ -128,76 +133,118 @@ void FS_BLE_AutoCalculateDividers(FS_Config_Data_t *config)
         const uint16_t *odr_table;
         uint8_t table_size;
         uint16_t packet_size;
-        uint16_t initial_divider;
-        uint32_t bandwidth;  // At initial divider
+        uint16_t hw_hz;          // Hardware ODR in Hz
+        uint32_t bandwidth;      // Calculated bandwidth
+        bool is_manual;          // true if user set non-zero divider
     } sensor_calc_t;
     
     sensor_calc_t sensors[] = {
         { config->enable_baro, &config->ble_baro_divider, config->baro_odr, 
-          baro_odr_table, sizeof(baro_odr_table)/sizeof(baro_odr_table[0]), 11, 0, 0 },
+          baro_odr_table, sizeof(baro_odr_table)/sizeof(baro_odr_table[0]), 11, 0, 0, false },
         { config->enable_hum, &config->ble_hum_divider, config->hum_odr,
-          hum_odr_table, sizeof(hum_odr_table)/sizeof(hum_odr_table[0]), 9, 0, 0 },
+          hum_odr_table, sizeof(hum_odr_table)/sizeof(hum_odr_table[0]), 9, 0, 0, false },
         { config->enable_imu, &config->ble_accel_divider, config->accel_odr,
-          accel_odr_table, sizeof(accel_odr_table)/sizeof(accel_odr_table[0]), 19, 0, 0 },
+          accel_odr_table, sizeof(accel_odr_table)/sizeof(accel_odr_table[0]), 19, 0, 0, false },
         { config->enable_imu, &config->ble_gyro_divider, config->gyro_odr,
-          gyro_odr_table, sizeof(gyro_odr_table)/sizeof(gyro_odr_table[0]), 19, 0, 0 },
+          gyro_odr_table, sizeof(gyro_odr_table)/sizeof(gyro_odr_table[0]), 19, 0, 0, false },
         { config->enable_mag, &config->ble_mag_divider, config->mag_odr,
-          mag_odr_table, sizeof(mag_odr_table)/sizeof(mag_odr_table[0]), 13, 0, 0 },
+          mag_odr_table, sizeof(mag_odr_table)/sizeof(mag_odr_table[0]), 13, 0, 0, false },
     };
     
-    uint32_t total_sensor_bandwidth = 0;
     int num_sensors = sizeof(sensors) / sizeof(sensors[0]);
     
+    // Get hardware rates and identify manual vs auto sensors
     for (int i = 0; i < num_sensors; i++) {
         sensor_calc_t *s = &sensors[i];
-        
-        // Skip if sensor disabled or divider already set by user
-        if (!s->enabled || *(s->divider_ptr) != 0) {
+        if (!s->enabled) {
             continue;
         }
         
-        // Calculate initial divider (target 15Hz)
-        s->initial_divider = FS_BLE_CalculateDivider(s->odr_setting, s->odr_table, s->table_size);
-        
-        // Calculate bandwidth at this divider
-        uint16_t hw_hz = ODR_TO_HZ(s->odr_table, s->table_size, s->odr_setting);
-        if (hw_hz > 0 && s->initial_divider > 0) {
-            uint16_t ble_hz = hw_hz / s->initial_divider;
-            s->bandwidth = ble_hz * s->packet_size;
-            total_sensor_bandwidth += s->bandwidth;
-        }
+        s->hw_hz = ODR_TO_HZ(s->odr_table, s->table_size, s->odr_setting);
+        s->is_manual = (*(s->divider_ptr) != 0);
     }
     
-    // Step 4: If total exceeds sensor budget, scale all dividers proportionally
-    if (total_sensor_bandwidth > (uint32_t)sensor_budget) {
-        // Calculate scale factor (how much we need to reduce bandwidth)
-        // scale > 1.0 means we need to increase dividers
-        float scale = (float)total_sensor_bandwidth / (float)sensor_budget;
+    // Step 2: Calculate manual divider bandwidth (second priority)
+    uint32_t manual_bandwidth = 0;
+    for (int i = 0; i < num_sensors; i++) {
+        sensor_calc_t *s = &sensors[i];
+        if (!s->enabled || !s->is_manual || s->hw_hz == 0) {
+            continue;
+        }
         
-        // Apply scale to all auto-calculated dividers
+        uint16_t ble_hz = s->hw_hz / *(s->divider_ptr);
+        s->bandwidth = ble_hz * s->packet_size;
+        manual_bandwidth += s->bandwidth;
+    }
+    
+    // Step 3: Calculate remaining budget for auto sensors
+    int32_t remaining_budget = BLE_SAFE_THROUGHPUT_LIMIT - gps_bandwidth - manual_bandwidth;
+    if (remaining_budget < 0) {
+        remaining_budget = 0;  // Manual + GPS already exceed budget
+    }
+    
+    // Step 4: Try auto sensors at full ODR (divider=1)
+    uint32_t auto_bandwidth = 0;
+    for (int i = 0; i < num_sensors; i++) {
+        sensor_calc_t *s = &sensors[i];
+        if (!s->enabled || s->is_manual || s->hw_hz == 0) {
+            continue;
+        }
+        
+        // Try divider=1 (full ODR)
+        uint16_t ble_hz = s->hw_hz / 1;
+        s->bandwidth = ble_hz * s->packet_size;
+        auto_bandwidth += s->bandwidth;
+    }
+    
+    // Step 5: If auto sensors exceed remaining budget, scale by percentage
+    if (auto_bandwidth > (uint32_t)remaining_budget && remaining_budget > 0) {
+        // Calculate scale factor (percentage we need to reduce bandwidth)
+        float scale = (float)auto_bandwidth / (float)remaining_budget;
+        
+        // Apply percentage-based scaling to all auto sensors
         for (int i = 0; i < num_sensors; i++) {
             sensor_calc_t *s = &sensors[i];
-            
-            if (!s->enabled || s->initial_divider == 0) {
+            if (!s->enabled || s->is_manual || s->hw_hz == 0) {
                 continue;
             }
             
-            // Only scale if this sensor's divider is in auto mode (was 0)
-            if (*(s->divider_ptr) == 0) {
-                // Scale up the divider (ceiling to ensure we stay under budget)
-                uint16_t scaled_divider = (uint16_t)(s->initial_divider * scale + 0.5f);
-                if (scaled_divider < 1) scaled_divider = 1;
-                *(s->divider_ptr) = scaled_divider;
+            // Scale divider up by percentage
+            // new_divider = 1 * scale
+            uint16_t scaled_divider = (uint16_t)(1.0f * scale + 0.5f);
+            if (scaled_divider < 1) {
+                scaled_divider = 1;
             }
+            
+            // Enforce minimum rate (0.5 Hz)
+            uint16_t max_divider = FS_BLE_CalculateMaxDivider(s->hw_hz);
+            if (scaled_divider > max_divider) {
+                scaled_divider = max_divider;
+            }
+            
+            *(s->divider_ptr) = scaled_divider;
         }
-    } else {
-        // Step 5: Budget not exceeded - just use initial dividers
+    } else if (remaining_budget == 0) {
+        // Manual + GPS already exceeded budget - set auto sensors to minimum rate
         for (int i = 0; i < num_sensors; i++) {
             sensor_calc_t *s = &sensors[i];
-            
-            if (s->enabled && s->initial_divider > 0 && *(s->divider_ptr) == 0) {
-                *(s->divider_ptr) = s->initial_divider;
+            if (!s->enabled || s->is_manual || s->hw_hz == 0) {
+                continue;
             }
+            
+            // Set to minimum rate (0.5 Hz)
+            uint16_t max_divider = FS_BLE_CalculateMaxDivider(s->hw_hz);
+            *(s->divider_ptr) = max_divider;
+        }
+    } else {
+        // Auto sensors fit within budget - use divider=1 (full ODR)
+        for (int i = 0; i < num_sensors; i++) {
+            sensor_calc_t *s = &sensors[i];
+            if (!s->enabled || s->is_manual || s->hw_hz == 0) {
+                continue;
+            }
+            
+            *(s->divider_ptr) = 1;
         }
     }
 }

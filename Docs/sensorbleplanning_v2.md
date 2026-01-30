@@ -107,123 +107,216 @@ All sensors have user-configurable Output Data Rates in config.txt:
 
 ---
 
-## GPS-Aware Divider Auto-Calculation
+## Priority-Based Divider Auto-Calculation
 
 ### Algorithm Overview
 
-When `BLE_*_Divider = 0` (auto mode), the firmware calculates optimal dividers using GPS bandwidth awareness:
+When `BLE_*_Divider = 0` (auto mode), the firmware uses a **priority-based algorithm** that respects user ODR choices while preventing bandwidth overrun:
+
+**Priority Order**:
+1. **GPS rate** (highest priority, no divider)
+2. **Manual dividers** (non-zero values, respected exactly)
+3. **Auto dividers** (zero values, calculated to fit remaining budget)
+
+**Core Principle**: Try to run sensors at **full ODR** (divider=1), only throttle when bandwidth requires it.
+
+### Algorithm Steps
 
 1. **Calculate GPS bandwidth** from `Rate` parameter:
    ```
    GPS_Hz = 1000 / Rate_ms
-   GPS_bandwidth = GPS_Hz Ã— 44 bytes
+   GPS_bandwidth = GPS_Hz × 44 bytes
    ```
 
-2. **Calculate remaining sensor budget**:
+2. **Calculate manual divider bandwidth**:
    ```
-   Sensor_budget = 1500 - GPS_bandwidth
-   (Minimum 100 bytes/sec reserved)
+   For each sensor with non-zero divider:
+     Manual_bandwidth += (HW_rate_Hz / divider) × packet_size
    ```
 
-3. **Calculate initial dividers** for each enabled sensor:
-   - Target 15Hz BLE per sensor (if hardware rate allows)
-   - Formula: `divider = ceil(HW_rate_Hz / 15)`
-
-4. **Calculate total sensor bandwidth** at initial dividers
-
-5. **If exceeds sensor budget**, scale all dividers proportionally:
+3. **Calculate remaining budget for auto sensors**:
    ```
-   Scale_factor = Total_sensor_bandwidth / Sensor_budget
-   Final_divider = ceil(Initial_divider Ã— Scale_factor)
+   Remaining_budget = 1500 - GPS_bandwidth - Manual_bandwidth
    ```
+
+4. **Try auto sensors at full ODR** (divider=1):
+   ```
+   For each sensor with divider=0:
+     Auto_bandwidth += (HW_rate_Hz / 1) × packet_size
+   ```
+
+5. **If auto bandwidth exceeds remaining budget**, scale by percentage:
+   ```
+   Scale_factor = Auto_bandwidth / Remaining_budget
+   For each auto sensor:
+     Scaled_divider = ceil(1 × Scale_factor)
+     Enforce minimum rate: divider ≤ HW_rate_Hz / 0.5
+   ```
+
+6. **Otherwise**, use divider=1 (full ODR)
+
 
 ### Example Scenarios
 
-#### Scenario 1: Default Configuration (GPS 5Hz)
-**Config**: GPS 200ms (5Hz), IMU 12.5Hz, Baro 10Hz, Mag 10Hz, Hum 1Hz
+#### Scenario 1: Default Configuration - Full ODR
+**Config**: GPS 200ms (5Hz), All sensors default ODR, All dividers=0 (auto)
+- Accel/Gyro: 12.5 Hz, Baro: 10 Hz, Mag: 10 Hz, Hum: 1 Hz
 
 ```
-GPS:   5 Hz Ã— 44 = 220 bytes/sec
-Remaining budget: 1500 - 220 = 1280 bytes/sec
+Step 1: GPS bandwidth
+  GPS: 5 Hz  44 = 220 bytes/sec
 
-Sensors (initial dividers, target 15Hz):
-  Accel:  12.5 Hz Ã· 1 = 12.5 Hz Ã— 19 = 238 bytes/sec
-  Gyro:   12.5 Hz Ã· 1 = 12.5 Hz Ã— 19 = 238 bytes/sec
-  Baro:   10 Hz Ã· 1 = 10 Hz Ã— 11 = 110 bytes/sec
-  Mag:    10 Hz Ã· 1 = 10 Hz Ã— 13 = 130 bytes/sec
-  Hum:    1 Hz Ã· 1 = 1 Hz Ã— 9 = 9 bytes/sec
-  Total sensors: 725 bytes/sec
+Step 2: Manual divider bandwidth
+  (None - all dividers are 0)
+  Manual_bandwidth = 0 bytes/sec
 
-725 < 1280 â†’ No scaling needed
-Final: GPS + sensors = 945 bytes/sec (63% of limit) âœ“
+Step 3: Remaining budget
+  Remaining = 1500 - 220 - 0 = 1280 bytes/sec
+
+Step 4: Try auto sensors at full ODR (divider=1)
+  Accel:  12.5 Hz  19 = 238 bytes/sec
+  Gyro:   12.5 Hz  19 = 238 bytes/sec
+  Baro:   10 Hz  11 = 110 bytes/sec
+  Mag:    10 Hz  13 = 130 bytes/sec
+  Hum:    1 Hz  9 = 9 bytes/sec
+  Auto_bandwidth = 725 bytes/sec
+
+Step 5: Check if scaling needed
+  725 < 1280  No scaling needed!
+
+Final Result:
+  All dividers = 1 (full ODR)
+  Total: 220 + 725 = 945 bytes/sec (63% of limit)
+  
+BLE Rates:
+  GPS: 5 Hz, Accel: 12.5 Hz, Gyro: 12.5 Hz
+  Baro: 10 Hz, Mag: 10 Hz, Hum: 1 Hz
 ```
 
-#### Scenario 2: High GPS Rate (GPS 25Hz)
-**Config**: GPS 40ms (25Hz), IMU 416Hz, Baro 100Hz, Mag 100Hz, Hum 12.5Hz
-
-```
-GPS:   25 Hz Ã— 44 = 1100 bytes/sec
-Remaining budget: 1500 - 1100 = 400 bytes/sec
-
-Sensors (initial dividers, target 15Hz):
-  Accel:  416 Hz Ã· 28 = 14.9 Hz Ã— 19 = 283 bytes/sec
-  Gyro:   416 Hz Ã· 28 = 14.9 Hz Ã— 19 = 283 bytes/sec
-  Baro:   100 Hz Ã· 7 = 14.3 Hz Ã— 11 = 157 bytes/sec
-  Mag:    100 Hz Ã· 7 = 14.3 Hz Ã— 13 = 186 bytes/sec
-  Hum:    12.5 Hz Ã· 1 = 12.5 Hz Ã— 9 = 113 bytes/sec
-  Total sensors: 1022 bytes/sec
-
-1022 > 400 â†’ Scaling required!
-Scale factor: 1022 / 400 = 2.56Ã—
-
-Final dividers (scaled):
-  Accel:  28 Ã— 2.56 = 72 â†’ 416/72 = 5.8 Hz Ã— 19 = 110 bytes/sec
-  Gyro:   28 Ã— 2.56 = 72 â†’ 416/72 = 5.8 Hz Ã— 19 = 110 bytes/sec
-  Baro:   7 Ã— 2.56 = 18 â†’ 100/18 = 5.6 Hz Ã— 11 = 62 bytes/sec
-  Mag:    7 Ã— 2.56 = 18 â†’ 100/18 = 5.6 Hz Ã— 13 = 73 bytes/sec
-  Hum:    1 Ã— 2.56 = 3 â†’ 12.5/3 = 4.2 Hz Ã— 9 = 38 bytes/sec
-  Total sensors: 393 bytes/sec
-
-Final: GPS + sensors = 1493 bytes/sec (99.5% of limit) âœ“
-```
-
-**Key Insight**: High GPS rates automatically reduce sensor BLE rates to stay within budget.
-
-#### Scenario 3: Ultra-High Sensor ODR (GPS 5Hz, IMU 6666Hz)
-**Config**: GPS 200ms (5Hz), IMU 6666Hz, Baro 200Hz, Mag 100Hz, Hum 7Hz
-
-```
-GPS:   5 Hz Ã— 44 = 220 bytes/sec
-Remaining budget: 1500 - 220 = 1280 bytes/sec
-
-Sensors (initial dividers, target 15Hz):
-  Accel:  6666 Hz Ã· 445 = 15 Hz Ã— 19 = 285 bytes/sec
-  Gyro:   6666 Hz Ã· 445 = 15 Hz Ã— 19 = 285 bytes/sec
-  Baro:   200 Hz Ã· 14 = 14.3 Hz Ã— 11 = 157 bytes/sec
-  Mag:    100 Hz Ã· 7 = 14.3 Hz Ã— 13 = 186 bytes/sec
-  Hum:    7 Hz Ã· 1 = 7 Hz Ã— 9 = 63 bytes/sec
-  Total sensors: 976 bytes/sec
-
-976 < 1280 â†’ No scaling needed
-Final: GPS + sensors = 1196 bytes/sec (80% of limit) âœ“
-```
-
-**Key Insight**: Even at extreme sensor rates (6666Hz), auto-calculation keeps BLE within safe limits.
+**Key Insight**: Default config runs all sensors at full ODR with plenty of headroom!
 
 ---
 
-## Configuration
+#### Scenario 2: High IMU ODR - Percentage Scaling
+**Config**: GPS 200ms (5Hz), Accel/Gyro: 416 Hz (ODR=6), Other sensors default, All dividers=0
 
-### config.txt Settings
+```
+Step 1: GPS bandwidth
+  GPS: 5 Hz  44 = 220 bytes/sec
 
-```ini
-; GPS Rate (milliseconds between measurements)
-Rate: 200  ; 5Hz (default)
+Step 2: Manual divider bandwidth
+  Manual_bandwidth = 0 bytes/sec
 
-; Sensor ODR Settings
-Baro_ODR:  2   ; 10Hz (default)
-Hum_ODR:   1   ; 1Hz (default)
-Accel_ODR: 1   ; 12.5Hz (default)
+Step 3: Remaining budget
+  Remaining = 1500 - 220 - 0 = 1280 bytes/sec
+
+Step 4: Try auto sensors at full ODR
+  Accel:  416 Hz  19 = 7,904 bytes/sec
+  Gyro:   416 Hz  19 = 7,904 bytes/sec
+  Baro:   10 Hz  11 = 110 bytes/sec
+  Mag:    10 Hz  13 = 130 bytes/sec
+  Hum:    1 Hz  9 = 9 bytes/sec
+  Auto_bandwidth = 16,057 bytes/sec
+
+Step 5: Scaling required!
+  Scale_factor = 16,057 / 1,280 = 12.54
+  
+  Accel:  divider = ceil(1  12.54) = 13  416/13 = 32.0 Hz  19 = 608 bytes/sec
+  Gyro:   divider = ceil(1  12.54) = 13  416/13 = 32.0 Hz  19 = 608 bytes/sec
+  Baro/Mag/Hum similarly scaled
+  
+  Auto_bandwidth after scaling = 1,235 bytes/sec
+
+Final Result:
+  All dividers = 13
+  Total: 220 + 1,235 = 1,455 bytes/sec (97% of limit)
+  
+BLE Rates:
+  GPS: 5 Hz, Accel: 32 Hz, Gyro: 32 Hz
+  Baro: 0.77 Hz, Mag: 0.77 Hz, Hum: 0.08 Hz
+```
+
+**Key Insight**: High-rate sensors maintain proportionally higher BLE rates (32 Hz vs 0.77 Hz).
+
+---
+
+#### Scenario 3: Manual Divider Priority
+**Config**: GPS 200ms (5Hz), Accel=416 Hz with manual divider=5, All others auto
+
+```
+Step 1: GPS bandwidth = 220 bytes/sec
+
+Step 2: Manual divider bandwidth
+  Accel: 416 / 5 = 83.2 Hz  19 = 1,581 bytes/sec
+
+Step 3: Remaining budget = 1500 - 220 - 1,581 = -301 (negative!)
+
+Step 5: Auto sensors set to minimum rate (0.5 Hz)
+
+Final Result:
+  Accel: 83.2 Hz (manual, honored)
+  Other sensors: 0.5 Hz (minimum)
+  Total: 1,829 bytes/sec (122% over!)
+   Validation fails, system unhealthy
+```
+
+**Key Insight**: Manual dividers have absolute priority, even when exceeding budget.
+
+---
+
+#### Scenario 4: Mixed Manual/Auto
+**Config**: GPS 200ms (5Hz), Accel manual div=20, Baro manual div=2, Others auto
+
+```
+Step 1: GPS = 220 bytes/sec
+Step 2: Manual = 450 bytes/sec (accel + baro)
+Step 3: Remaining = 830 bytes/sec
+Step 4: Auto sensors try full ODR
+Step 5: Scale factor = 9.69
+
+Final Result:
+  Accel: 20.8 Hz (manual), Baro: 5.0 Hz (manual)
+  Gyro: 41.6 Hz (auto, scaled)
+  Total: 1,474 bytes/sec (98%)
+```
+
+**Key Insight**: Manual dividers respected, auto scales to remaining budget.
+
+---
+
+#### Scenario 5: High GPS Rate
+**Config**: GPS 40ms (25Hz), Accel/Gyro: 416 Hz, Baro: 100 Hz, All auto
+
+```
+Step 1: GPS = 1,100 bytes/sec (high!)
+Step 3: Remaining = 400 bytes/sec (limited!)
+Step 5: Scale factor = 45.54 (extreme!)
+
+Final Result:
+  GPS: 25 Hz
+  Accel/Gyro: 9.0 Hz (heavily throttled)
+  Baro/Mag: 2.2 Hz
+  Total: 1,495 bytes/sec (99.7%)
+```
+
+**Key Insight**: High GPS rate forces aggressive sensor throttling, but priorities maintained.
+
+---
+
+### Algorithm Comparison
+
+| Scenario | Old (15 Hz target) | New (Full ODR) | Improvement |
+|----------|-------------------|----------------|-------------|
+| Default config | ~15 Hz | Full ODR (12.5/10/1) |  Respects user choice |
+| High IMU (416 Hz) | 15 Hz (div=28) | 32 Hz (div=13) |  2 higher rate |
+| Low sensors | Throttled to 15 Hz | Full ODR |  No waste |
+| Manual dividers | Not prioritized | Absolute priority |  User control |
+| GPS + sensors | Fixed 15 Hz | Percentage scaled |  Proportional |
+
+---
+
+
+**Minimum Rate**: All sensors maintain ≥ 0.5 Hz even under extreme bandwidth pressure
 Gyro_ODR:  1   ; 12.5Hz (default)
 Mag_ODR:   0   ; 10Hz (default)
 
