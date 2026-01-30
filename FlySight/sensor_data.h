@@ -35,6 +35,10 @@
                                         // divider: 1-65535 (little-endian uint16_t, 0 reserved for auto)
 #define SD_CMD_GET_BLE_DIVIDER     0x11 // Payload: [sensor_id (1 byte)]
                                         // Response Data: [sensor_id (1 byte)] [divider_low (1 byte)] [divider_high (1 byte)]
+
+// Fusion AHRS magnetometer calibration (runtime override)
+#define SD_CMD_SET_FUSION_MAG_HARD 0x20 // Payload: [x_lsb x_msb y_lsb y_msb z_lsb z_msb] (3 × int16_t milligauss, little-endian)
+#define SD_CMD_SET_FUSION_MAG_SOFT 0x21 // Payload: [m0_lsb ...m0_msb m1... m8_msb] (9 × int32_t scaled by 1000000, little-endian)
 // ... other future SD specific commands, e.g., for enabling/disabling other sensor streams over BLE ...
 
 /**

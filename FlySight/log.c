@@ -447,7 +447,11 @@ void FS_Log_UpdateIMU(void)
 	char *ptr = row + sizeof(row);
 
 	*(--ptr) = '\n';
-	ptr = writeInt32ToBuf(ptr, data->temperature, 2, 1, '\r');
+	ptr = writeInt32ToBuf(ptr, data->q_z,         4, 1, '\r');
+	ptr = writeInt32ToBuf(ptr, data->q_y,         4, 1, ',');
+	ptr = writeInt32ToBuf(ptr, data->q_x,         4, 1, ',');
+	ptr = writeInt32ToBuf(ptr, data->q_w,         4, 1, ',');
+	ptr = writeInt32ToBuf(ptr, data->temperature, 2, 1, ',');
 	ptr = writeInt32ToBuf(ptr, data->az,          5, 1, ',');
 	ptr = writeInt32ToBuf(ptr, data->ay,          5, 1, ',');
 	ptr = writeInt32ToBuf(ptr, data->ax,          5, 1, ',');
@@ -887,14 +891,12 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 		f_printf(&sensorFile, "$UNIT,HUM,s,percent,deg C\n");
 		f_printf(&sensorFile, "$COL,MAG,time,x,y,z,temperature\n");
 		f_printf(&sensorFile, "$UNIT,MAG,s,gauss,gauss,gauss,deg C\n");
-		f_printf(&sensorFile, "$COL,IMU,time,wx,wy,wz,ax,ay,az,temperature\n");
-		f_printf(&sensorFile, "$UNIT,IMU,s,deg/s,deg/s,deg/s,g,g,g,deg C\n");
+		f_printf(&sensorFile, "$COL,IMU,time,wx,wy,wz,ax,ay,az,temperature,q_w,q_x,q_y,q_z\n");
+		f_printf(&sensorFile, "$UNIT,IMU,s,deg/s,deg/s,deg/s,g,g,g,deg C,,,,\n");
 		f_printf(&sensorFile, "$COL,TIME,time,tow,week\n");
 		f_printf(&sensorFile, "$UNIT,TIME,s,s,\n");
 		f_printf(&sensorFile, "$COL,VBAT,time,voltage\n");
 		f_printf(&sensorFile, "$UNIT,VBAT,s,volt\n");
-		f_printf(&sensorFile, "$COL,AHRS,time,q_w,q_x,q_y,q_z\n");
-		f_printf(&sensorFile, "$UNIT,AHRS,s,,,,,\n");
 		f_printf(&sensorFile, "$DATA\n");
 		f_sync(&sensorFile);
 	}

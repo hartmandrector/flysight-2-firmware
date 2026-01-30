@@ -87,5 +87,12 @@ uint8_t GYRO_BLE_Build(const FS_IMU_Data_t *src, uint8_t *dst)
         memcpy(p, &src->temperature, sizeof(src->temperature)); p += 2;
     }
 
+    if (s_mask & GYRO_BLE_BIT_QUATERNION) {                 /* quaternion (w,x,y,z * 10000) */
+        memcpy(p, &src->q_w, sizeof(src->q_w));           p += 2;
+        memcpy(p, &src->q_x, sizeof(src->q_x));           p += 2;
+        memcpy(p, &src->q_y, sizeof(src->q_y));           p += 2;
+        memcpy(p, &src->q_z, sizeof(src->q_z));           p += 2;
+    }
+
     return (uint8_t)(p - dst);                              /* total payload length */
 }

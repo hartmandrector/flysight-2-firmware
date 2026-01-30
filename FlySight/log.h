@@ -24,6 +24,7 @@
 #ifndef LOG_H_
 #define LOG_H_
 
+#include "stm32wbxx_hal.h"
 #include "baro.h"
 #include "gnss.h"
 #include "hum.h"

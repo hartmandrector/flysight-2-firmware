@@ -52,6 +52,23 @@
 /* Sample rate for gyro bias estimation */
 #define SAMPLE_RATE_HZ  416
 
+/**
+ * Get gyroscope full-scale range based on config setting
+ * @param gyro_fs Config value (0-3)
+ * @return Range in degrees per second
+ */
+static inline float GetGyroFullScale(uint8_t gyro_fs)
+{
+    switch (gyro_fs)
+    {
+    case 0: return 250.0f;   // GYRO_FS_250
+    case 1: return 500.0f;   // GYRO_FS_500
+    case 2: return 1000.0f;  // GYRO_FS_1000
+    case 3: return 2000.0f;  // GYRO_FS_2000
+    default: return 2000.0f; // Default to max range
+    }
+}
+
 /* State */
 static bool fusion_enabled = false;
 static bool fusion_active = false;
@@ -93,10 +110,10 @@ void FS_Fusion_Init(void)
     FusionAhrsSettings settings = {
         .convention = FusionConventionNwu,      /* North-West-Up */
         .gain = (float)cfg->fusion_gain / 100.0f,
-        .gyroscopeRange = 2000.0f,              /* LSM6DSO max range */
+        .gyroscopeRange = GetGyroFullScale(cfg->gyro_fs),  /* Actual configured range */
         .accelerationRejection = (float)cfg->fusion_accel_reject,
         .magneticRejection = (float)cfg->fusion_mag_reject,
-        .recoveryTriggerPeriod = SAMPLE_RATE_HZ * 5,  /* 5 second recovery */
+        .recoveryTriggerPeriod = SAMPLE_RATE_HZ * cfg->fusion_timeout,  /* seconds -> samples */
     };
     FusionAhrsSetSettings(&ahrs, &settings);
     
@@ -255,7 +272,7 @@ void FS_Fusion_UpdateIMU(uint32_t time_ms,
     };
     
     /* Apply accelerometer scale matrix calibration: corrected = M * raw */
-    FusionVector accelerometer = FusionMatrixMultiplyVector(accel_matrix, raw_accel);
+    FusionVector accelerometer = FusionMatrixMultiply(accel_matrix, raw_accel);
     
     /* Run AHRS update */
     if (mag_valid) {

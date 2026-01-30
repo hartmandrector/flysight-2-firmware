@@ -32,15 +32,16 @@
 /* ------------------------------------------------------------------ */
 /* Packet layout control                                              */
 /* ------------------------------------------------------------------ */
-#define GYRO_BLE_MAX_LEN            20u
+#define GYRO_BLE_MAX_LEN            28u  /* Updated to accommodate quaternion */
 
 /* Bit-layout of mask byte (MSB first) */
 #define GYRO_BLE_BIT_TIME           0x80u
 #define GYRO_BLE_BIT_GYRO           0x40u
 #define GYRO_BLE_BIT_TEMPERATURE    0x20u
+#define GYRO_BLE_BIT_QUATERNION     0x10u
 
 /* Default mask: all fields enabled */
-#define GYRO_BLE_DEFAULT_MASK       0xE0u
+#define GYRO_BLE_DEFAULT_MASK       0xF0u
 
 /* ------------------------------------------------------------------ */
 /* Public API                                                         */

@@ -24,6 +24,8 @@
 #ifndef BARO_H_
 #define BARO_H_
 
+#include "stm32wbxx_hal.h"
+
 typedef struct
 {
 	uint32_t time;			// ms

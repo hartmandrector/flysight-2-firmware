@@ -255,6 +255,15 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
                     *   Changes are temporary until reboot. Use config.txt for persistent settings.
                 *   `0x11` (`SD_CMD_GET_BLE_DIVIDER`): Request the current BLE transmission divider for a sensor.
                     *   Payload: `[sensor_id (uint8)]`. (Total length: 2 bytes)
+                *   `0x20` (`SD_CMD_SET_FUSION_MAG_HARD`): Set magnetometer hard-iron calibration (for sensor fusion).
+                    *   Payload: `[x_offset (int16_t)] [y_offset (int16_t)] [z_offset (int16_t)]`. (Total length: 7 bytes)
+                    *   Offsets in milligauss. Compensates for constant magnetic field offsets.
+                    *   Changes take effect immediately and persist until power cycle (not saved to config.txt).
+                *   `0x21` (`SD_CMD_SET_FUSION_MAG_SOFT`): Set magnetometer soft-iron calibration matrix (for sensor fusion).
+                    *   Payload: `[xx (int32_t)] [xy (int32_t)] [xz (int32_t)] [yx (int32_t)] [yy (int32_t)] [yz (int32_t)] [zx (int32_t)] [zy (int32_t)] [zz (int32_t)]`. (Total length: 37 bytes)
+                    *   Matrix elements scaled by 1,000,000 (e.g., 1.05 → 1050000). Little-endian int32_t.
+                    *   Compensates for magnetic field distortion. Requires advanced calibration procedure.
+                    *   Changes take effect immediately and persist until power cycle (not saved to config.txt).
         *   **Indication Responses (FlySight to Central, if indications enabled):**
             *   Format: `[0xF0 (CP_RESPONSE_ID)] [Request Opcode] [Status] [Optional Data]`
             *   For `SD_CMD_SET_GNSS_BLE_MASK (0x01)`:
@@ -269,6 +278,12 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
             *   For `SD_CMD_GET_BLE_DIVIDER (0x11)`:
                 *   Success: `[0xF0] [0x11] [0x01 (CP_STATUS_SUCCESS)] [sensor_id (uint8)] [divider_low (uint8)] [divider_high (uint8)]`
                 *   Invalid Param: `[0xF0] [0x11] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (invalid sensor_id)
+            *   For `SD_CMD_SET_FUSION_MAG_HARD (0x20)`:
+                *   Success: `[0xF0] [0x20] [0x01 (CP_STATUS_SUCCESS)]`
+                *   Invalid Param: `[0xF0] [0x20] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (incorrect payload length)
+            *   For `SD_CMD_SET_FUSION_MAG_SOFT (0x21)`:
+                *   Success: `[0xF0] [0x21] [0x01 (CP_STATUS_SUCCESS)]`
+                *   Invalid Param: `[0xF0] [0x21] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (incorrect payload length)
             *   For unknown command:
                 *   `[0xF0] [Received Opcode] [0x02 (CP_STATUS_CMD_NOT_SUPPORTED)]`
 
@@ -310,20 +325,27 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
         *   UUID: `0000000A-8e22-4541-9d4c-21edae82ed19`
         *   Properties: **Read, Notify**
         *   Permissions: Encrypted Read/Write required.
-        *   Usage: Streams gyroscope data from IMU. Updates only when FlySight is in Active Mode. Central must enable notifications.
-        *   Max Length: 20 bytes (`SizeSd_Gyro_Measurement`). Variable length.
+        *   Usage: Streams gyroscope data from IMU. Updates only when FlySight is in Active Mode. Central must enable notifications. Includes orientation quaternion from sensor fusion if enabled.
+        *   Max Length: 28 bytes (`GYRO_BLE_MAX_LEN`). Variable length.
         *   **Data Format (Little Endian):**
             *   Byte 0: `mask` (uint8). Bitmask indicating which fields are present.
                 *   `0x80` (`GYRO_BLE_BIT_TIME`): Timestamp included.
                 *   `0x40` (`GYRO_BLE_BIT_GYRO`): Gyroscope data included.
                 *   `0x20` (`GYRO_BLE_BIT_TEMPERATURE`): Temperature included.
+                *   `0x10` (`GYRO_BLE_BIT_QUATERNION`): Orientation quaternion included (from sensor fusion).
             *   If `GYRO_BLE_BIT_TIME` set: `time` (uint32_t). Timestamp in ms. (4 bytes)
             *   If `GYRO_BLE_BIT_GYRO` set:
-                *   `gx` (int16_t). X-axis angular rate in mdps. (2 bytes)
-                *   `gy` (int16_t). Y-axis angular rate in mdps. (2 bytes)
-                *   `gz` (int16_t). Z-axis angular rate in mdps. (2 bytes)
+                *   `wx` (int32_t). X-axis angular rate in mdps (millidegrees/sec). (4 bytes)
+                *   `wy` (int32_t). Y-axis angular rate in mdps. (4 bytes)
+                *   `wz` (int32_t). Z-axis angular rate in mdps. (4 bytes)
             *   If `GYRO_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
-        *   Default Mask: `0xE0` (all fields enabled).
+            *   If `GYRO_BLE_BIT_QUATERNION` set:
+                *   `q_w` (int16_t). Quaternion W component × 10000. (2 bytes)
+                *   `q_x` (int16_t). Quaternion X component × 10000. (2 bytes)
+                *   `q_y` (int16_t). Quaternion Y component × 10000. (2 bytes)
+                *   `q_z` (int16_t). Quaternion Z component × 10000. (2 bytes)
+                *   **Note:** Quaternion uses North-West-Up (NWU) coordinate frame. When sensor fusion is disabled (`Enable_Fusion=0` in config), identity quaternion is sent (10000,0,0,0). Magnitude should equal 10000 (normalized). To reconstruct float values: `q_w_float = q_w / 10000.0`.
+        *   Default Mask: `0xF0` (all fields enabled including quaternion).
 
     *   **`SD_MAG_Measurement` (Magnetometer)**
         *   UUID: `0000000B-8e22-4541-9d4c-21edae82ed19`
@@ -481,7 +503,7 @@ FlySight 2 also implements standard BLE services:
 | Sensor Data Control     | `SD_Control_Point`        | `00000006-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Write, Indicate        | 20 (Var)           |
 | Baro Measurement        | `SD_BARO_Measurement`     | `00000008-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 10 (Var)           |
 | Accel Measurement       | `SD_ACCEL_Measurement`    | `00000009-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 20 (Var)           |
-| Gyro Measurement        | `SD_GYRO_Measurement`     | `0000000A-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 20 (Var)           |
+| Gyro Measurement        | `SD_GYRO_Measurement`     | `0000000A-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 28 (Var)           |
 | Mag Measurement         | `SD_MAG_Measurement`      | `0000000B-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 14 (Var)           |
 | Starter Pistol Service  |                           | `00000002-cc7a-482a-984a-7f2ed5b3e58f`       | Starter_Pistol     |                        | N/A                |
 | Starter Pistol Control  | `SP_Control_Point`        | `00000003-8e22-4541-9d4c-21edae82ed19`       | Starter_Pistol     | Write, Indicate        | 20 (Var)           |

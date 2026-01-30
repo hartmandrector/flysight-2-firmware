@@ -192,6 +192,7 @@ typedef struct
 	uint16_t fusion_gain;         // Filter gain * 100 (e.g., 46 = 0.46)
 	uint8_t  fusion_accel_reject; // Acceleration rejection threshold (degrees)
 	uint8_t  fusion_mag_reject;   // Magnetic rejection threshold (degrees)
+	uint8_t  fusion_timeout;      // Recovery trigger period (seconds)
 	int16_t  fusion_mag_hard_x;   // Hard iron offset X (milligauss)
 	int16_t  fusion_mag_hard_y;   // Hard iron offset Y (milligauss)
 	int16_t  fusion_mag_hard_z;   // Hard iron offset Z (milligauss)

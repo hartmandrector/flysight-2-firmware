@@ -24,6 +24,7 @@
 #include "main.h"
 #include "app_common.h"
 #include "config.h"
+#include "ble_config.h"
 #include "ff.h"
 #include "state.h"
 
@@ -202,7 +203,19 @@ static const char defaultConfig[] =
 		"BLE_Hum_Divider:   0 ; Auto-calculate (recommended)\n"
 		"BLE_Accel_Divider: 0 ; Auto-calculate (recommended)\n"
 		"BLE_Gyro_Divider:  0 ; Auto-calculate (recommended)\n"
-		"BLE_Mag_Divider:   0 ; Auto-calculate (recommended)\n";
+		"BLE_Mag_Divider:   0 ; Auto-calculate (recommended)\n"
+		"\n"
+		"; Sensor Fusion (AHRS)\n"
+		";\n"
+		"; Enable_Fusion: Enable 9-DOF sensor fusion for orientation tracking\n"
+		";   0 = Disabled (default)\n"
+		";   1 = Enabled (outputs quaternion, heading, pitch, roll)\n"
+		";\n"
+		"; Advanced calibration parameters (Fusion_Gain, Fusion_Accel_Reject,\n"
+		"; Fusion_Mag_Reject, calibration matrices) are available but not\n"
+		"; documented here. Use calibration tools for proper setup.\n"
+		";\n"
+		"Enable_Fusion:     0 ; 0 = off, 1 = on\n";
 
 void FS_Config_Init(void)
 {
@@ -272,6 +285,39 @@ void FS_Config_Init(void)
 	config.ble_accel_divider = 0;  // Auto-calculate
 	config.ble_gyro_divider  = 0;  // Auto-calculate
 	config.ble_mag_divider   = 0;  // Auto-calculate
+
+	// Fusion AHRS defaults
+	config.enable_fusion       = 0;     // Disabled by default
+	config.fusion_gain         = 46;    // 0.46 default gain (x100)
+	config.fusion_accel_reject = 10;    // 10° acceleration rejection
+	config.fusion_mag_reject   = 10;    // 10° magnetic rejection
+	config.fusion_timeout      = 5;     // 5 second recovery period
+	config.fusion_mag_hard_x   = 0;     // No hard-iron offset
+	config.fusion_mag_hard_y   = 0;
+	config.fusion_mag_hard_z   = 0;
+	config.fusion_gyro_bias_x  = 0;     // No gyro bias (x10000)
+	config.fusion_gyro_bias_y  = 0;
+	config.fusion_gyro_bias_z  = 0;
+	// Accelerometer scale matrix - identity (x1000000)
+	config.fusion_accel_m[0]   = 1000000;  // xx
+	config.fusion_accel_m[1]   = 0;        // xy
+	config.fusion_accel_m[2]   = 0;        // xz
+	config.fusion_accel_m[3]   = 0;        // yx
+	config.fusion_accel_m[4]   = 1000000;  // yy
+	config.fusion_accel_m[5]   = 0;        // yz
+	config.fusion_accel_m[6]   = 0;        // zx
+	config.fusion_accel_m[7]   = 0;        // zy
+	config.fusion_accel_m[8]   = 1000000;  // zz
+	// Magnetometer soft-iron matrix - identity (x1000000)
+	config.fusion_mag_soft_m[0] = 1000000;  // xx
+	config.fusion_mag_soft_m[1] = 0;        // xy
+	config.fusion_mag_soft_m[2] = 0;        // xz
+	config.fusion_mag_soft_m[3] = 0;        // yx
+	config.fusion_mag_soft_m[4] = 1000000;  // yy
+	config.fusion_mag_soft_m[5] = 0;        // yz
+	config.fusion_mag_soft_m[6] = 0;        // zx
+	config.fusion_mag_soft_m[7] = 0;        // zy
+	config.fusion_mag_soft_m[8] = 1000000;  // zz
 
 	config.lat            = 0;
 	config.lon            = 0;
@@ -385,6 +431,37 @@ FS_Config_Result_t FS_Config_Read(const char *filename)
 		HANDLE_VALUE("BLE_Accel_Divider", config.ble_accel_divider, val, val >= 0 && val <= 65535);
 		HANDLE_VALUE("BLE_Gyro_Divider",  config.ble_gyro_divider,  val, val >= 0 && val <= 65535);
 		HANDLE_VALUE("BLE_Mag_Divider",   config.ble_mag_divider,   val, val >= 0 && val <= 65535);
+
+		// Fusion AHRS parameters
+		HANDLE_VALUE("Enable_Fusion",       config.enable_fusion,       val, val == 0 || val == 1);
+		HANDLE_VALUE("Fusion_Gain",         config.fusion_gain,         val, val > 0 && val <= 500);
+		HANDLE_VALUE("Fusion_Accel_Reject", config.fusion_accel_reject, val, val >= 0 && val <= 180);
+		HANDLE_VALUE("Fusion_Mag_Reject",   config.fusion_mag_reject,   val, val >= 0 && val <= 180);
+		HANDLE_VALUE("Fusion_Timeout",      config.fusion_timeout,      val, val > 0 && val <= 60);
+		HANDLE_VALUE("Fusion_Mag_Hard_X",   config.fusion_mag_hard_x,   val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Hard_Y",   config.fusion_mag_hard_y,   val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Hard_Z",   config.fusion_mag_hard_z,   val, TRUE);
+		HANDLE_VALUE("Fusion_Gyro_Bias_X",  config.fusion_gyro_bias_x,  val, TRUE);
+		HANDLE_VALUE("Fusion_Gyro_Bias_Y",  config.fusion_gyro_bias_y,  val, TRUE);
+		HANDLE_VALUE("Fusion_Gyro_Bias_Z",  config.fusion_gyro_bias_z,  val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M0",     config.fusion_accel_m[0],   val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M1",     config.fusion_accel_m[1],   val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M2",     config.fusion_accel_m[2],   val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M3",     config.fusion_accel_m[3],   val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M4",     config.fusion_accel_m[4],   val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M5",     config.fusion_accel_m[5],   val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M6",     config.fusion_accel_m[6],   val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M7",     config.fusion_accel_m[7],   val, TRUE);
+		HANDLE_VALUE("Fusion_Accel_M8",     config.fusion_accel_m[8],   val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M0",  config.fusion_mag_soft_m[0], val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M1",  config.fusion_mag_soft_m[1], val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M2",  config.fusion_mag_soft_m[2], val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M3",  config.fusion_mag_soft_m[3], val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M4",  config.fusion_mag_soft_m[4], val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M5",  config.fusion_mag_soft_m[5], val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M6",  config.fusion_mag_soft_m[6], val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M7",  config.fusion_mag_soft_m[7], val, TRUE);
+		HANDLE_VALUE("Fusion_Mag_Soft_M8",  config.fusion_mag_soft_m[8], val, TRUE);
 
 		HANDLE_VALUE("Lat",       config.lat,          val, val >= -900000000 && val <= 900000000);
 		HANDLE_VALUE("Lon",       config.lon,          val, val >= -1800000000 && val <= 1800000000);

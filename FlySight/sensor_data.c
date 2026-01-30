@@ -31,6 +31,7 @@
 #include "accel_ble.h"
 #include "gyro_ble.h"
 #include "mag_ble.h"
+#include "fusion_integration.h" // For Fusion calibration setters
 #include "string.h"           // For memcpy
 #include "app_common.h"       // For APP_DBG_MSG (optional)
 #include "dbg_trace.h"
@@ -147,6 +148,63 @@ void SensorData_Handle_SD_ControlPointWrite(
                         response_data_buf[2] = (divider >> 8) & 0xFF; // High byte
                         response_data_len = 3;
                     }
+                }
+                break;
+
+            case SD_CMD_SET_FUSION_MAG_HARD:
+                // Payload: 6 bytes (3 × int16_t milligauss, little-endian)
+                if (params_len != 6) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    int16_t x_mg = (int16_t)(params[0] | (params[1] << 8));
+                    int16_t y_mg = (int16_t)(params[2] | (params[3] << 8));
+                    int16_t z_mg = (int16_t)(params[4] | (params[5] << 8));
+                    
+                    // Convert milligauss to gauss for Fusion
+                    FusionVector hard_iron = {
+                        .axis = {
+                            .x = (float)x_mg / 1000.0f,
+                            .y = (float)y_mg / 1000.0f,
+                            .z = (float)z_mg / 1000.0f
+                        }
+                    };
+                    
+                    FS_Fusion_SetMagHardIron(hard_iron);
+                    status = CP_STATUS_SUCCESS;
+                }
+                break;
+
+            case SD_CMD_SET_FUSION_MAG_SOFT:
+                // Payload: 36 bytes (9 × int32_t scaled by 1000000, little-endian)
+                if (params_len != 36) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    FusionMatrix soft_iron;
+                    
+                    // Parse 9 matrix elements (row-major order)
+                    for (int i = 0; i < 9; i++) {
+                        int32_t val = (int32_t)(params[i*4 + 0] |
+                                               (params[i*4 + 1] << 8) |
+                                               (params[i*4 + 2] << 16) |
+                                               (params[i*4 + 3] << 24));
+                        float f_val = (float)val / 1000000.0f;
+                        
+                        // Assign to matrix (row-major)
+                        switch(i) {
+                            case 0: soft_iron.element.xx = f_val; break;
+                            case 1: soft_iron.element.xy = f_val; break;
+                            case 2: soft_iron.element.xz = f_val; break;
+                            case 3: soft_iron.element.yx = f_val; break;
+                            case 4: soft_iron.element.yy = f_val; break;
+                            case 5: soft_iron.element.yz = f_val; break;
+                            case 6: soft_iron.element.zx = f_val; break;
+                            case 7: soft_iron.element.zy = f_val; break;
+                            case 8: soft_iron.element.zz = f_val; break;
+                        }
+                    }
+                    
+                    FS_Fusion_SetMagSoftIron(soft_iron);
+                    status = CP_STATUS_SUCCESS;
                 }
                 break;
 

@@ -45,6 +45,7 @@
 #include "gyro_ble.h"
 #include "mag_ble.h"
 #include "ble_config.h"
+#include "fusion_integration.h"
 
 #define LED_BLINK_MSEC      900
 #define LED_BLINK_TICKS     (LED_BLINK_MSEC*1000/CFG_TS_TICK_VAL)
@@ -105,6 +106,10 @@ void FS_ActiveControl_Init(void)
 	ACCEL_BLE_Init(config);
 	GYRO_BLE_Init(config);
 	MAG_BLE_Init(config);
+	
+	// Initialize sensor fusion
+	FS_Fusion_Init();
+	FS_Fusion_Start();
 }
 
 void FS_ActiveControl_DeInit(void)
@@ -128,6 +133,9 @@ void FS_ActiveControl_DeInit(void)
 
 	// Update state
 	state = FS_CONTROL_INACTIVE;
+	
+	// Stop sensor fusion
+	FS_Fusion_Stop();
 
 	// Delete timer
 	HW_TS_Delete(led_timer_id);
@@ -228,6 +236,9 @@ void FS_Mag_DataReady_Callback(void)
 		// Save to log file
 		FS_Log_WriteMagData(data);
 	}
+	
+	// Update sensor fusion
+	FS_Fusion_UpdateMag(data->x, data->y, data->z);
 
 	// Update BLE characteristic
 	Custom_MAG_Update(data);
@@ -301,19 +312,44 @@ void FS_ActiveControl_RawReady_Callback(void)
 
 void FS_IMU_DataReady_Callback(void)
 {
-	const FS_IMU_Data_t *data = FS_IMU_GetData();
+	FS_IMU_Data_t imu_data = *FS_IMU_GetData();
 
 	if (state != FS_CONTROL_ACTIVE) return;
 
+	// Update sensor fusion
+	FS_Fusion_UpdateIMU(imu_data.time,
+	                    imu_data.wx, imu_data.wy, imu_data.wz,
+	                    imu_data.ax, imu_data.ay, imu_data.az);
+
+	// Get Fusion output and populate quaternion fields
+	if (FS_Config_Get()->enable_fusion)
+	{
+		float q[4];
+		FS_Fusion_GetQuaternion(q);
+		
+		imu_data.q_w = (int16_t)(q[0] * 10000.0f);
+		imu_data.q_x = (int16_t)(q[1] * 10000.0f);
+		imu_data.q_y = (int16_t)(q[2] * 10000.0f);
+		imu_data.q_z = (int16_t)(q[3] * 10000.0f);
+	}
+	else
+	{
+		// No Fusion data, set quaternion to identity (w=1, x=y=z=0)
+		imu_data.q_w = 10000;
+		imu_data.q_x = 0;
+		imu_data.q_y = 0;
+		imu_data.q_z = 0;
+	}
+
+	// Save to log file (quaternion now populated)
 	if (FS_Config_Get()->enable_logging)
 	{
-		// Save to log file
-		FS_Log_WriteIMUData(data);
+		FS_Log_WriteIMUData(&imu_data);
 	}
 
 	// Update BLE characteristics
-	Custom_ACCEL_Update(data);
-	Custom_GYRO_Update(data);
+	Custom_ACCEL_Update(&imu_data);
+	Custom_GYRO_Update(&imu_data);
 }
 
 void FS_VBAT_ValueReady_Callback(void)

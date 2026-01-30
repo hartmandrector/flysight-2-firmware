@@ -24,6 +24,8 @@
 #ifndef MAG_H_
 #define MAG_H_
 
+#include "stm32wbxx_hal.h"
+
 typedef struct
 {
 	uint32_t time;			// ms

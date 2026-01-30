@@ -24,6 +24,8 @@
 #ifndef IMU_H_
 #define IMU_H_
 
+#include "stm32wbxx_hal.h"
+
 typedef struct
 {
 	uint32_t time;			// ms
@@ -34,6 +36,10 @@ typedef struct
 	int32_t ay;				// g * 100000
 	int32_t az;				// g * 100000
 	int16_t temperature;	// degrees C * 100
+	int16_t q_w;			// quaternion W * 10000
+	int16_t q_x;			// quaternion X * 10000
+	int16_t q_y;			// quaternion Y * 10000
+	int16_t q_z;			// quaternion Z * 10000
 } FS_IMU_Data_t;
 
 void FS_IMU_TransferComplete(void);
