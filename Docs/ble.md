@@ -307,7 +307,7 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
         *   UUID: `00000009-8e22-4541-9d4c-21edae82ed19`
         *   Properties: **Read, Notify**
         *   Permissions: Encrypted Read/Write required.
-        *   Usage: Streams accelerometer data from IMU. Updates only when FlySight is in Active Mode. Central must enable notifications.
+        *   Usage: Streams accelerometer data from IMU. Updates only when FlySight is in Active Mode. Central must enable notifications. **Note:** Both accelerometer and gyroscope are read from the same IMU chip simultaneously, but transmitted as separate BLE characteristics with independent dividers.
         *   Max Length: 20 bytes (`SizeSd_Accel_Measurement`). Variable length.
         *   **Data Format (Little Endian):**
             *   Byte 0: `mask` (uint8). Bitmask indicating which fields are present.
@@ -316,17 +316,19 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
                 *   `0x20` (`ACCEL_BLE_BIT_TEMPERATURE`): Temperature included.
             *   If `ACCEL_BLE_BIT_TIME` set: `time` (uint32_t). Timestamp in ms. (4 bytes)
             *   If `ACCEL_BLE_BIT_ACCEL` set:
-                *   `ax` (int16_t). X-axis acceleration in mg. (2 bytes)
-                *   `ay` (int16_t). Y-axis acceleration in mg. (2 bytes)
-                *   `az` (int16_t). Z-axis acceleration in mg. (2 bytes)
+                *   `ax` (int32_t). X-axis acceleration in g × 100000. (4 bytes)
+                *   `ay` (int32_t). Y-axis acceleration in g × 100000. (4 bytes)
+                *   `az` (int32_t). Z-axis acceleration in g × 100000. (4 bytes)
+                *   **Note:** To convert to g: `accel_g = ax / 100000.0`. To convert to m/s²: `accel_ms2 = (ax / 100000.0) * 9.80665`.
             *   If `ACCEL_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
         *   Default Mask: `0xE0` (all fields enabled).
+        *   **Transmission Order:** When IMU data is available, accelerometer packets are transmitted **first**, followed by gyroscope packets.
 
     *   **`SD_GYRO_Measurement` (Gyroscope)**
         *   UUID: `0000000A-8e22-4541-9d4c-21edae82ed19`
         *   Properties: **Read, Notify**
         *   Permissions: Encrypted Read/Write required.
-        *   Usage: Streams gyroscope data from IMU. Updates only when FlySight is in Active Mode. Central must enable notifications.
+        *   Usage: Streams gyroscope data from IMU. Updates only when FlySight is in Active Mode. Central must enable notifications. **Note:** Both accelerometer and gyroscope are read from the same IMU chip simultaneously, but transmitted as separate BLE characteristics with independent dividers.
         *   Max Length: 20 bytes (`SizeSd_Gyro_Measurement`). Variable length.
         *   **Data Format (Little Endian):**
             *   Byte 0: `mask` (uint8). Bitmask indicating which fields are present.
@@ -340,6 +342,7 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
                 *   `gz` (int16_t). Z-axis angular rate in mdps. (2 bytes)
             *   If `GYRO_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
         *   Default Mask: `0xE0` (all fields enabled).
+        *   **Transmission Order:** When IMU data is available, accelerometer packets are transmitted **first**, followed by gyroscope packets.
 
     *   **`SD_MAG_Measurement` (Magnetometer)**
         *   UUID: `0000000B-8e22-4541-9d4c-21edae82ed19`
@@ -481,6 +484,26 @@ FlySight 2 also implements standard BLE services:
 *   **MTU Negotiation:** Request a larger MTU (e.g., 247 bytes) after connection for efficient file transfer. Handle potential failures where the MTU remains small (e.g., 23 bytes with BLE 4.0/4.1 devices), potentially by fragmenting File Transfer data packets if necessary (though the current File Transfer implementation seems to assume MTU is large enough for its framing).
 *   **Pairing Flow:** Implement the connect-then-read-secure-characteristic flow to reliably trigger pairing, especially if developing a cross-platform application.
 *   **Connection Management:** Use the ping command (`0xfe` on `FT_Packet_In`) to keep connections alive during inactivity. Handle disconnects gracefully. Be aware of the Android system pairing behavior possibly leaving connections open.
+*   **Sensor Data Streaming:**
+    *   **Separate Characteristics:** Each sensor streams data on its own BLE characteristic, allowing selective subscription. Subscribe only to the sensors you need to conserve bandwidth and power.
+    *   **Independent Dividers:** Each sensor can have its own transmission divider (decimation factor), configurable via `SD_Control_Point` or `config.txt`. This allows different update rates per sensor.
+    *   **Bandwidth Management:** Total BLE bandwidth is limited to ~1500 bytes/sec sustained. Use dividers to stay within this limit, especially at high sensor ODRs. The firmware includes auto-calculation of dividers (set divider=0 in config.txt).
+    *   **IMU Data Architecture:** Accelerometer and gyroscope are read simultaneously from the same LSM6DSO chip on each data-ready interrupt, but transmitted as separate characteristics. Both packets share the same timestamp when read together. Gyro packets are transmitted immediately after accel packets for the same data-ready event.
+    *   **Timestamps:** All sensor packets include a millisecond timestamp (`time`) field when the time bit is set in the mask. Use these for synchronization across sensors.
+    *   **Default Masks:** Most sensors enable all fields by default (time, sensor data, temperature).
+*   **Coordinate Frames:**
+    *   **IMU (Accelerometer/Gyroscope):** Uses the device's physical coordinate system. Refer to hardware documentation for axis orientation.
+    *   **GNSS:** Standard WGS84 coordinate system (latitude/longitude in degrees × 10⁷, altitude in mm).
+*   **Data Type Precision:**
+    *   **Accelerometer:** int32_t, g × 100000 (e.g., 1g = 100000, 9.81m/s² = 100000)
+    *   **Gyroscope:** int16_t, mdps (millidegrees per second)
+    *   **Magnetometer:** int16_t, mGauss (milligauss)
+    *   **Magnetometer:** int16_t, mGauss (milligauss)
+    *   **Barometer:** int32_t, Pa (pascals)
+    *   **Humidity:** uint16_t, % × 10 (e.g., 45.3% = 453)
+    *   **Temperature:** int16_t, °C × 100 (e.g., 25.5°C = 2550)
+    *   **GPS Position:** int32_t, degrees × 10⁷ or mm
+    *   **GPS Velocity:** int32_t, mm/s
 *   **Code Examples:** Refer extensively to the provided Python, iOS, and Android examples for practical implementation details, especially for the GBN ARQ logic.
 
 ## Appendix
