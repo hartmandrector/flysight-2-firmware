@@ -1,0 +1,62 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "FlySight2 Debug (ST-Link)",
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/Debug/flysight-2-firmware.elf",
+            "serverExecutable": "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.stlink-gdb-server.win32_2.2.300.202509021040/tools/bin/ST-LINK_gdbserver.exe",
+            "serverArgs": [
+                "-p", "61234",
+                "-l", "1",
+                "-d",
+                "-s",
+                "-cp", "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.win32_2.2.300.202508131133/tools/bin",
+                "-m", "0",
+                "-k"
+            ],
+            "stm32cubeprogrammer": "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.win32_2.2.300.202508131133/tools/bin",
+            "armToolchainPath": "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.12.3.rel1.win32_1.0.200.202406191623/tools/bin",
+            "gdbPath": "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.12.3.rel1.win32_1.0.200.202406191623/tools/bin/arm-none-eabi-gdb.exe",
+            "device": "STM32WB5MMG",
+            "interface": "swd",
+            "runToEntryPoint": "main",
+            "svdFile": "${workspaceFolder}/.vscode/STM32WB5M.svd",
+            "v1": false,
+            "showDevDebugOutput": "parsed"
+        },
+        {
+            "name": "FlySight2 Flash & Run (ST-Link)",
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/Debug/flysight-2-firmware.elf",
+            "serverExecutable": "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.stlink-gdb-server.win32_2.2.300.202509021040/tools/bin/ST-LINK_gdbserver.exe",
+            "serverArgs": [
+                "-p", "61234",
+                "-l", "1",
+                "-d",
+                "-s",
+                "-cp", "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.win32_2.2.300.202508131133/tools/bin",
+                "-m", "0",
+                "-k"
+            ],
+            "stm32cubeprogrammer": "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.win32_2.2.300.202508131133/tools/bin",
+            "armToolchainPath": "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.12.3.rel1.win32_1.0.200.202406191623/tools/bin",
+            "gdbPath": "C:/ST/STM32CubeIDE_2.0.0/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.12.3.rel1.win32_1.0.200.202406191623/tools/bin/arm-none-eabi-gdb.exe",
+            "device": "STM32WB5MMG",
+            "interface": "swd",
+            "runToEntryPoint": "Reset_Handler",
+            "v1": false,
+            "showDevDebugOutput": "parsed",
+            "postLaunchCommands": [
+                "continue"
+            ]
+        }
+    ]
+}

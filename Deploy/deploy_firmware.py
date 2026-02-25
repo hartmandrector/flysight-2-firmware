@@ -106,10 +106,19 @@ def encrypt_firmware_with_key(
     print(f"Wrote {output_file}\n")
 
 def main():
+    # Get git tag for version
+    import subprocess
+    try:
+        git_tag = subprocess.check_output(['git', 'describe', '--tags', '--always'], 
+                                          cwd='..').decode().strip()
+    except:
+        git_tag = 'develop'
+    
     fw_files = [
-        ('Firmware_As_Built/UserApp.bin', 'UserApp'),
+        ('Firmware_As_Built/UserApp.bin', f'UserApp_{git_tag}'),
     ]
 
+    # Generate for all batches - safe to have all variants
     pk_files = [
         ('Public_Keys/pub_key_b2.bin', 'B2'),
         ('Public_Keys/pub_key_b3.bin', 'B3'),
