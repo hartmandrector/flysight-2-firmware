@@ -33,7 +33,17 @@ Configuration loaded from [CONFIG.TXT](../Docs/CONFIG.TXT) and verified with `ca
 - **Accel:** 12.24 Hz (232.5 bytes/sec)
 - **Gyro:** 12.24 Hz (330.4 bytes/sec)
 - **Mag:** 2.94 Hz (38.2 bytes/sec)
-
+observed gps:20, gyro 12, accel 12, mag 18 baro 10 hum:broken 0
+upstream fw: gps: 8-10 with queue problems, gyro/accel: 250, mag 50
+Based on packet sizes (including quaternion in gyro data):
+observed:
+GPS @ 10 Hz: 10 × 44 bytes = 440 bytes/sec
+Gyro @ 250 Hz (includes quaternion): 250 × 27 bytes = 6,750 bytes/sec
+Accel @ 250 Hz: 250 × 19 bytes = 4,750 bytes/sec
+Mag @ 50 Hz: 50 × 13 bytes = 650 bytes/sec
+Baro @ 10 Hz: 10 × 11 bytes = 110 bytes/sec
+Hum @ 1 Hz: 1 × 9 bytes = 9 bytes/sec
+Total: 12,709 bytes/sec (847% of 1500 byte/sec BLE limit)
 ### Baseline Bandwidth
 **Total:** 1493.6 bytes/sec (**99.6%** of 1500 limit)  
 **Status:** ✅ VALID - Within bandwidth limit
@@ -60,7 +70,7 @@ Configuration loaded from [CONFIG.TXT](../Docs/CONFIG.TXT) and verified with `ca
 ### Test Run 1 - Baseline Verification
 **Dividers:** AUTO (Baro=34, Hum=2, Accel=34, Gyro=34, Mag=34)  
 **Bandwidth:** 1493.6 bytes/sec (99.6%)  
-**Data Loss:** [ ] None / [ ] Some / [ ] Severe  
+**Data Loss:** [ x] None / [ ] Some / [ ] Severe  
 **Notes:**
 
 
