@@ -8,6 +8,8 @@ Implements the same priority-based algorithm as ble_config.c
 import sys
 import argparse
 import math
+import re
+import os
 
 # Constants
 BLE_BANDWIDTH_LIMIT = 1500  # bytes/sec
@@ -22,9 +24,10 @@ GYRO_PACKET_SIZE = 27  # Includes quaternion (default mask 0xF0)
 MAG_PACKET_SIZE = 13
 
 # ODR mappings
-BARO_ODR_MAP = {0: 10.0, 1: 20.0, 2: 50.0, 3: 100.0}
+BARO_ODR_MAP = {0: 0.0, 1: 1.0, 2: 10.0, 3: 25.0, 4: 50.0, 5: 75.0, 6: 100.0, 7: 200.0}
 HUM_ODR_MAP = {0: 1.0}  # Fixed 1 Hz
-IMU_ODR_MAP = {0: 1.6, 1: 12.5, 2: 26.0, 3: 52.0, 4: 104.0, 5: 208.0, 6: 416.0}
+MAG_ODR_MAP = {0: 10.0, 1: 20.0, 2: 50.0, 3: 100.0}
+IMU_ODR_MAP = {0: 0.0, 1: 12.5, 2: 26.0, 3: 52.0, 4: 104.0, 5: 208.0, 6: 416.0, 7: 833.0, 8: 1666.0, 9: 3333.0, 10: 6666.0, 11: 1.6}
 
 def odr_to_hz(odr_idx, sensor_type):
     """Convert ODR index to Hz for given sensor type"""
@@ -32,7 +35,9 @@ def odr_to_hz(odr_idx, sensor_type):
         return BARO_ODR_MAP.get(odr_idx, 10.0)
     elif sensor_type == 'hum':
         return HUM_ODR_MAP.get(odr_idx, 1.0)
-    else:  # accel, gyro, mag
+    elif sensor_type == 'mag':
+        return MAG_ODR_MAP.get(odr_idx, 10.0)
+    else:  # accel, gyro
         return IMU_ODR_MAP.get(odr_idx, 12.5)
 
 def calculate_max_divider(hw_rate_hz):
@@ -236,6 +241,65 @@ def print_validation(is_valid, bw_info):
         print(f"  Exceeded by: {exceeded:.1f} bytes/sec ({exceeded_pct:.1f}%)")
     print("=" * 63)
 
+def parse_config_file(filepath):
+    """
+    Parse a FlySight CONFIG.TXT file and extract relevant settings.
+    Returns a dictionary with the parsed configuration.
+    """
+    config = {
+        'gnss_rate': 200,           # Default 200ms = 5Hz
+        'baro_odr': 2,              # Default index 2 = 10Hz
+        'hum_odr': 1,               # Default index 1 = 1Hz
+        'accel_odr': 1,             # Default index 1 = 12.5Hz
+        'gyro_odr': 1,              # Default index 1 = 12.5Hz
+        'mag_odr': 0,               # Default index 0 = 10Hz
+        'ble_baro_divider': 0,      # Default auto
+        'ble_hum_divider': 0,       # Default auto
+        'ble_accel_divider': 0,     # Default auto
+        'ble_gyro_divider': 0,      # Default auto
+        'ble_mag_divider': 0,       # Default auto
+    }
+    
+    # Mapping from config file keys to our internal keys
+    key_mapping = {
+        'Rate': 'gnss_rate',
+        'Baro_ODR': 'baro_odr',
+        'Hum_ODR': 'hum_odr',
+        'Accel_ODR': 'accel_odr',
+        'Gyro_ODR': 'gyro_odr',
+        'Mag_ODR': 'mag_odr',
+        'BLE_Baro_Divider': 'ble_baro_divider',
+        'BLE_Hum_Divider': 'ble_hum_divider',
+        'BLE_Accel_Divider': 'ble_accel_divider',
+        'BLE_Gyro_Divider': 'ble_gyro_divider',
+        'BLE_Mag_Divider': 'ble_mag_divider',
+    }
+    
+    try:
+        with open(filepath, 'r') as f:
+            for line in f:
+                # Remove comments and whitespace
+                line = line.split(';')[0].strip()
+                if not line:
+                    continue
+                
+                # Parse key: value pairs
+                match = re.match(r'(\w+):\s*(\d+)', line)
+                if match:
+                    key, value = match.groups()
+                    if key in key_mapping:
+                        config[key_mapping[key]] = int(value)
+        
+        print(f"Loaded configuration from: {filepath}\n")
+        return config
+        
+    except FileNotFoundError:
+        print(f"Error: Config file not found: {filepath}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error parsing config file: {e}")
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(
         description='BLE Divider Calculator - FlySight 2',
@@ -244,6 +308,9 @@ def main():
 Examples:
   # Default configuration (all auto)
   %(prog)s
+
+  # Load from CONFIG.TXT file
+  %(prog)s --config-file ../Docs/CONFIGcopydefault.TXT
 
   # High IMU rate (416 Hz accel/gyro)
   %(prog)s --accel-odr 6 --gyro-odr 6
@@ -256,18 +323,20 @@ Examples:
         """
     )
     
+    parser.add_argument('--config-file', type=str, default=None,
+                        help='Load settings from a CONFIG.TXT file (overrides other arguments)')
     parser.add_argument('--gps-ms', type=int, default=200, 
                         help='GPS rate in milliseconds (default: 200 = 5Hz)')
-    parser.add_argument('--baro-odr', type=int, default=0, 
-                        help='Baro ODR: 0=10Hz, 1=20Hz, 2=50Hz, 3=100Hz (default: 0)')
-    parser.add_argument('--hum-odr', type=int, default=0, 
-                        help='Hum ODR: always 1Hz (default: 0)')
+    parser.add_argument('--baro-odr', type=int, default=2, 
+                        help='Baro ODR: 0=0Hz, 1=1Hz, 2=10Hz, 3=25Hz, 4=50Hz, 5=75Hz, 6=100Hz, 7=200Hz (default: 2)')
+    parser.add_argument('--hum-odr', type=int, default=1, 
+                        help='Hum ODR: always 1Hz (default: 1)')
     parser.add_argument('--accel-odr', type=int, default=1, 
-                        help='Accel ODR: 0=1.6Hz, 1=12.5Hz, 2=26Hz, 3=52Hz, 4=104Hz, 5=208Hz, 6=416Hz (default: 1)')
+                        help='Accel ODR: 0=0Hz, 1=12.5Hz, 2=26Hz, 3=52Hz, 4=104Hz, 5=208Hz, 6=416Hz, 7=833Hz, 8=1666Hz, 9=3333Hz, 10=6666Hz, 11=1.6Hz (default: 1)')
     parser.add_argument('--gyro-odr', type=int, default=1, 
-                        help='Gyro ODR: same as accel (default: 1)')
-    parser.add_argument('--mag-odr', type=int, default=1, 
-                        help='Mag ODR: same as accel (default: 1)')
+                        help='Gyro ODR: 0=0Hz, 1=12.5Hz, 2=26Hz, 3=52Hz, 4=104Hz, 5=208Hz, 6=416Hz, 7=833Hz, 8=1666Hz, 9=3333Hz, 10=6666Hz (default: 1)')
+    parser.add_argument('--mag-odr', type=int, default=0, 
+                        help='Mag ODR: 0=10Hz, 1=20Hz, 2=50Hz, 3=100Hz (default: 0)')
     parser.add_argument('--baro-div', type=int, default=0, 
                         help='Baro divider: 0=auto, >0=manual (default: 0)')
     parser.add_argument('--hum-div', type=int, default=0, 
@@ -281,20 +350,24 @@ Examples:
     
     args = parser.parse_args()
     
-    # Build config dictionary
-    config = {
-        'gnss_rate': args.gps_ms,
-        'baro_odr': args.baro_odr,
-        'hum_odr': args.hum_odr,
-        'accel_odr': args.accel_odr,
-        'gyro_odr': args.gyro_odr,
-        'mag_odr': args.mag_odr,
-        'ble_baro_divider': args.baro_div,
-        'ble_hum_divider': args.hum_div,
-        'ble_accel_divider': args.accel_div,
-        'ble_gyro_divider': args.gyro_div,
-        'ble_mag_divider': args.mag_div,
-    }
+    # Check if config file provided
+    if args.config_file:
+        config = parse_config_file(args.config_file)
+    else:
+        # Build config dictionary from command-line arguments
+        config = {
+            'gnss_rate': args.gps_ms,
+            'baro_odr': args.baro_odr,
+            'hum_odr': args.hum_odr,
+            'accel_odr': args.accel_odr,
+            'gyro_odr': args.gyro_odr,
+            'mag_odr': args.mag_odr,
+            'ble_baro_divider': args.baro_div,
+            'ble_hum_divider': args.hum_div,
+            'ble_accel_divider': args.accel_div,
+            'ble_gyro_divider': args.gyro_div,
+            'ble_mag_divider': args.mag_div,
+        }
     
     # Save input dividers for display
     input_dividers = {
