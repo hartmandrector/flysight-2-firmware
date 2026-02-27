@@ -1704,6 +1704,25 @@ tBleStatus Custom_STM_App_Update_Char(Custom_STM_Char_Opcode_t CharOpcode, uint8
       /* USER CODE END CUSTOM_STM_App_Update_Service_2_Char_3*/
       break;
 
+    case CUSTOM_STM_SD_HUM_MEASUREMENT:
+      ret = aci_gatt_update_char_value(CustomContext.CustomSensor_DataHdle,
+                                       CustomContext.CustomSd_Hum_MeasurementHdle,
+                                       0, /* charValOffset */
+                                       SizeSd_Hum_Measurement, /* charValueLen */
+                                       (uint8_t *)  pPayload);
+      if (ret != BLE_STATUS_SUCCESS)
+      {
+        APP_DBG_MSG("  Fail   : aci_gatt_update_char_value SD_HUM_MEASUREMENT command, result : 0x%x \n\r", ret);
+      }
+      else
+      {
+        APP_DBG_MSG("  Success: aci_gatt_update_char_value SD_HUM_MEASUREMENT command\n\r");
+      }
+      /* USER CODE BEGIN CUSTOM_STM_App_Update_Service_2_Char_3a*/
+
+      /* USER CODE END CUSTOM_STM_App_Update_Service_2_Char_3a*/
+      break;
+
     case CUSTOM_STM_SD_ACCEL_MEASUREMENT:
       ret = aci_gatt_update_char_value(CustomContext.CustomSensor_DataHdle,
                                        CustomContext.CustomSd_Accel_MeasurementHdle,
