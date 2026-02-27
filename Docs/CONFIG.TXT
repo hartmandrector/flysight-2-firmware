@@ -1,0 +1,187 @@
+; FlySight - http://flysight.ca
+
+; GPS settings
+
+Model:     7     ; Dynamic model
+                 ;   0 = Portable
+                 ;   2 = Stationary
+                 ;   3 = Pedestrian
+                 ;   4 = Automotive
+                 ;   5 = Sea
+                 ;   6 = Airborne with < 1 G acceleration
+                 ;   7 = Airborne with < 2 G acceleration
+                 ;   8 = Airborne with < 4 G acceleration
+Rate:      50   ; Measurement rate (ms)
+
+; Alarm settings
+
+; WARNING: GPS measurements depend on very weak signals
+;          received from orbiting satellites. As such, they
+;          are prone to interference, and should NEVER be
+;          relied upon for life saving purposes.
+
+;          UNDER NO CIRCUMSTANCES SHOULD THESE ALARMS BE
+;          USED TO INDICATE DEPLOYMENT OR BREAKOFF ALTITUDE.
+
+; NOTE:    Alarm elevations are given in meters above ground
+;          elevation, which is specified in DZ_Elev.
+
+Win_Above:     0 ; Window above each alarm (m)
+Win_Below:     0 ; Window below each alarm (m)
+DZ_Elev:       0 ; Ground elevation (m above sea level)
+
+Alarm_Elev:    0 ; Alarm elevation (m above ground level)
+Alarm_Type:    0 ; Alarm type
+                 ;   0 = No alarm
+                 ;   1 = Beep
+                 ;   2 = Chirp up
+                 ;   3 = Chirp down
+                 ;   4 = Play file
+Alarm_File:    0 ; File to be played
+;
+; Sensor Configuration
+;
+; Output Data Rate (ODR) settings control the rate at which sensor
+; hardware sends data to the microcontroller. These rates determine
+; the data rate in SENSOR.CSV log files and Bluetooth streaming.
+;
+; Each sensor can be individually enabled (1) or disabled (0).
+; Disabling a sensor reduces power consumption and turns off both
+; logging and Bluetooth transmission for that sensor.
+;
+; GPS Rate (milliseconds):
+;   1000 = 1 Hz (default)
+;   500  = 2 Hz
+;   200  = 5 Hz
+;   100  = 10 Hz
+;   50   = 20 Hz (tested, accurate)
+;   40   = 25 Hz (tested, accurate, maximum recommended)
+;
+; Barometer (LPS22HH) - Baro_ODR:
+;   0 = Power-down / One-shot
+;   1 = 1 Hz
+;   2 = 10 Hz (default)
+;   3 = 25 Hz
+;   4 = 50 Hz
+;   5 = 75 Hz
+;   6 = 100 Hz (maximum)
+;   7 = 200 Hz (low-noise mode, high power)
+;
+Enable_Baro:   1 ; Enable barometer (0 = off, 1 = on)
+Baro_ODR:      3 ; 25 Hz
+
+; Humidity (HTS221/SHT4x) - Hum_ODR:
+;   0 = Power-down / One-shot
+;   1 = 1 Hz (default)
+;   2 = 7 Hz (HTS221 only)
+;   3 = 12.5 Hz (HTS221 maximum)
+;
+Enable_Hum:    1 ; Enable humidity sensor (0 = off, 1 = on)
+Hum_ODR:       1 ; 1 Hz
+
+; Magnetometer (LIS2MDL) - Mag_ODR:
+;   0 = 10 Hz (default, minimum rate)
+;   1 = 20 Hz
+;   2 = 50 Hz
+;   3 = 100 Hz (maximum)
+;
+; Note: Magnetometer does not support power-down via ODR.
+;       To disable magnetometer, use Enable_Mag: 0
+;
+Enable_Mag:    1 ; Enable magnetometer (0 = off, 1 = on)
+Mag_ODR:       3 ; 100 Hz
+
+; Accelerometer (LSM6DSO) - Accel_ODR:
+;   0  = Power-down
+;   1  = 12.5 Hz (default, low-power)
+;   2  = 26 Hz (low-power)
+;   3  = 52 Hz (low-power)
+;   4  = 104 Hz (normal)
+;   5  = 208 Hz (normal)
+;   6  = 416 Hz (high-performance)
+;   7  = 833 Hz (high-performance)
+;   8  = 1666 Hz (high-performance)
+;   9  = 3333 Hz (high-performance)
+;   10 = 6666 Hz (high-performance, maximum)
+;   11 = 1.6 Hz (ultra-low-power)
+;
+Enable_IMU:    1 ; Enable IMU (accel + gyro) (0 = off, 1 = on)
+Accel_ODR:     6 ; 416 Hz
+Accel_FS:      3 ; Accelerometer full scale
+                 ;   0 = ±2 g
+                 ;   1 = ±4 g
+                 ;   2 = ±8 g
+                 ;   3 = ±16 g
+
+; Gyroscope (LSM6DSO) - Gyro_ODR:
+;   0  = Power-down
+;   1  = 12.5 Hz (default, low-power)
+;   2  = 26 Hz (low-power)
+;   3  = 52 Hz (low-power)
+;   4  = 104 Hz (normal)
+;   5  = 208 Hz (normal)
+;   6  = 416 Hz (high-performance)
+;   7  = 833 Hz (high-performance)
+;   8  = 1666 Hz (high-performance)
+;   9  = 3333 Hz (high-performance)
+;   10 = 6666 Hz (high-performance, maximum)
+;
+; Note: Gyro_ODR values 0-10 only. ODR value 11 (1.6 Hz)
+;       is not supported for gyroscope.
+;
+Gyro_ODR:      6 ; 12.5 Hz
+Gyro_FS:       3 ; Gyroscope full scale
+                 ;   0 = ±250 dps
+                 ;   1 = ±500 dps
+                 ;   2 = ±1000 dps
+                 ;   3 = ±2000 dps
+
+; Bluetooth BLE Divider Settings
+;
+; These dividers control the rate at which sensor data is transmitted
+; over Bluetooth Low Energy. The BLE transmission rate equals:
+;
+;   BLE_Rate = Hardware_Rate / Divider
+;
+; Setting to 0 enables auto-calculation (recommended), which tries to run
+; sensors at full ODR (divider=1). If total bandwidth would exceed the safe
+; limit (1500 bytes/sec), auto sensors are scaled by percentage to fit.
+;
+; Priority order:
+;   1. GPS rate (controlled by 'Rate' parameter, no divider)
+;   2. Manual dividers (non-zero values, respected exactly)
+;   3. Auto dividers (0 values, calculated to fit remaining budget)
+;
+; This approach respects your ODR choices - sensors run at full rate unless
+; bandwidth requires throttling. Manual dividers take priority, allowing you
+; to ensure critical sensors get their desired rate.
+;
+; Examples:
+;   Default config (GPS 5Hz, all sensors low ODR) → All dividers = 1 (full rate)
+;   High IMU (416 Hz accel/gyro) → Scales to fit, maintains relative priorities
+;   Mixed manual/auto → Manual respected, auto scales to fit remaining budget
+;
+; Minimum rate: Auto-calculation enforces 0.5 Hz minimum on all sensors
+;               to keep data flowing even under extreme bandwidth pressure.
+;
+; WARNING: Setting manual dividers too low may exceed BLE bandwidth limits,
+;          causing buffer overrun and connection loss. Auto (0) is strongly
+;          recommended for reliable operation.
+;
+BLE_Baro_Divider:  0 ; Auto-calculate (recommended)
+BLE_Hum_Divider:   0 ; Auto-calculate (recommended)
+BLE_Accel_Divider: 0 ; Auto-calculate (recommended)
+BLE_Gyro_Divider:  0 ; Auto-calculate (recommended)
+BLE_Mag_Divider:   0 ; Auto-calculate (recommended)
+
+; Sensor Fusion (AHRS)
+;
+; Enable_Fusion: Enable 9-DOF sensor fusion for orientation tracking
+;   0 = Disabled (default)
+;   1 = Enabled (outputs quaternion, heading, pitch, roll)
+;
+; Advanced calibration parameters (Fusion_Gain, Fusion_Accel_Reject,
+; Fusion_Mag_Reject, calibration matrices) are available but not
+; documented here. Use calibration tools for proper setup.
+;
+Enable_Fusion:     1 ; 0 = off, 1 = on
