@@ -107,15 +107,15 @@ static uint32_t rx_read_index, rx_write_index;
 
 static uint8_t gnss_pv_packet[GNSS_BLE_MAX_LEN];
 static uint8_t baro_pv_packet[BARO_BLE_MAX_LEN];
-static uint8_t baro_sample_counter = 0;
+static uint16_t baro_sample_counter = 0;
 static uint8_t hum_pv_packet[HUM_BLE_MAX_LEN];
-static uint8_t hum_sample_counter = 0;
+static uint16_t hum_sample_counter = 0;
 static uint8_t accel_pv_packet[ACCEL_BLE_MAX_LEN];
-static uint8_t accel_sample_counter = 0;
+static uint16_t accel_sample_counter = 0;
 static uint8_t gyro_pv_packet[GYRO_BLE_MAX_LEN];
-static uint8_t gyro_sample_counter = 0;
+static uint16_t gyro_sample_counter = 0;
 static uint8_t mag_pv_packet[MAG_BLE_MAX_LEN];
-static uint8_t mag_sample_counter = 0;
+static uint16_t mag_sample_counter = 0;
 
 static uint8_t start_result_packet[9];
 
@@ -1000,7 +1000,7 @@ void Custom_GNSS_Update(const FS_GNSS_Data_t *current)
 void Custom_BARO_Update(const FS_Baro_Data_t *current)
 {
   /* Decimation: only send every Nth sample */
-  uint8_t divider = BARO_BLE_GetDivider();
+  uint16_t divider = BARO_BLE_GetDivider();
   if (++baro_sample_counter < divider)
   {
     return;
