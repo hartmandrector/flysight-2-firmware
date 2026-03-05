@@ -32,7 +32,7 @@ void FS_SensorTime_Init(void)
 	__HAL_RCC_TIM2_CLK_ENABLE();
 
 	/* Configure TIM2 as free-running 1 MHz counter */
-	TIM2->PSC = 63;          /* 64 MHz / 64 = 1 MHz = 1 us per tick */
+	TIM2->PSC = 31;          /* 32 MHz / 32 = 1 MHz = 1 us per tick */
 	TIM2->ARR = 0xFFFFFFFF;  /* Full 32-bit range */
 	TIM2->CNT = 0;
 	TIM2->CR1 = 0;           /* Upcounting, no auto-reload preload */
