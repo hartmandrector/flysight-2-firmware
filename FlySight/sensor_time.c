@@ -21,21 +21,72 @@
 **  Website: http://flysight.ca/                                          **
 ****************************************************************************/
 
-#ifndef BARO_H_
-#define BARO_H_
+#include "main.h"
+#include "sensor_time.h"
 
-typedef struct
+static volatile uint32_t overflow_count;
+
+void FS_SensorTime_Init(void)
 {
-	uint64_t time;			// us
-	int32_t pressure;		// Pa * 100
-	int16_t temperature;	// degrees C * 100
-} FS_Baro_Data_t;
+	/* Enable TIM2 clock */
+	__HAL_RCC_TIM2_CLK_ENABLE();
 
-void FS_Baro_Init(void);
-HAL_StatusTypeDef FS_Baro_Start(void);
-void FS_Baro_Stop(void);
-void FS_Baro_Read(void);
-const FS_Baro_Data_t *FS_Baro_GetData(void);
-void FS_Baro_DataReady_Callback(void);
+	/* Configure TIM2 as free-running 1 MHz counter */
+	TIM2->PSC = 31;          /* 32 MHz / 32 = 1 MHz = 1 us per tick */
+	TIM2->ARR = 0xFFFFFFFF;  /* Full 32-bit range */
+	TIM2->CNT = 0;
+	TIM2->CR1 = 0;           /* Upcounting, no auto-reload preload */
 
-#endif /* BARO_H_ */
+	/* Generate update event to load prescaler, then clear the flag */
+	TIM2->EGR = TIM_EGR_UG;
+	TIM2->SR = ~TIM_SR_UIF;
+
+	/* Enable update interrupt */
+	TIM2->DIER = TIM_DIER_UIE;
+
+	/* Configure NVIC for TIM2 */
+	HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(TIM2_IRQn);
+}
+
+void FS_SensorTime_Start(void)
+{
+	/* Reset counter and overflow */
+	overflow_count = 0;
+	TIM2->CNT = 0;
+	TIM2->SR = ~TIM_SR_UIF;
+
+	/* Start counting */
+	TIM2->CR1 |= TIM_CR1_CEN;
+}
+
+void FS_SensorTime_Stop(void)
+{
+	/* Stop counting */
+	TIM2->CR1 &= ~TIM_CR1_CEN;
+
+	/* Disable TIM2 clock to save power */
+	__HAL_RCC_TIM2_CLK_DISABLE();
+}
+
+uint64_t FS_SensorTime_GetTicks(void)
+{
+	uint32_t hi1, hi2, lo;
+
+	do {
+		hi1 = overflow_count;
+		lo = TIM2->CNT;
+		hi2 = overflow_count;
+	} while (hi1 != hi2);
+
+	return ((uint64_t)hi1 << 32) | lo;
+}
+
+void TIM2_IRQHandler(void)
+{
+	if (TIM2->SR & TIM_SR_UIF)
+	{
+		TIM2->SR = ~TIM_SR_UIF;
+		++overflow_count;
+	}
+}

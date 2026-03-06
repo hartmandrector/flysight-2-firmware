@@ -26,7 +26,7 @@
 
 typedef struct
 {
-	uint32_t time;			// ms
+	uint64_t time;			// us
 	uint16_t humidity;		// rH % * 10
 	uint16_t temperature;	// degrees C * 10
 } FS_Hum_Data_t;

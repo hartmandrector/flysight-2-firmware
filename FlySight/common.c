@@ -55,6 +55,33 @@ char *writeInt32ToBuf(char *ptr, int32_t val, int8_t dec, int8_t dot, char delim
 	return ptr;
 }
 
+char *writeInt64ToBuf(char *ptr, int64_t val, int8_t dec, int8_t dot, char delimiter)
+{
+    int64_t value = val > 0 ? val : -val;
+
+    *--ptr = delimiter;
+    while (value > 0 || dec > 0)
+    {
+        lldiv_t res = lldiv(value, 10);
+        *--ptr = res.rem + '0';
+        value = res.quot;
+        if (--dec == 0 && dot)
+        {
+            *--ptr = '.';
+        }
+    }
+    if (*ptr == '.' || *ptr == delimiter)
+    {
+        *--ptr = '0';
+    }
+    if (val < 0)
+    {
+        *--ptr = '-';
+    }
+
+	return ptr;
+}
+
 void FS_Common_GetRandomBytes(uint32_t *buf, uint32_t count)
 {
 	HAL_StatusTypeDef res;

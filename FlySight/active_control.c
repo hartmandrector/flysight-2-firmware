@@ -37,6 +37,7 @@
 #include "log.h"
 #include "mag.h"
 #include "state.h"
+#include "rtc_util.h"
 #include "time.h"
 #include "vbat.h"
 
@@ -46,6 +47,7 @@
 static uint8_t led_timer_id;
 
 static volatile bool hasFix;
+static volatile bool rtcUpdated;
 
 static volatile enum {
 	FS_CONTROL_INACTIVE = 0,
@@ -53,8 +55,6 @@ static volatile enum {
 } state = FS_CONTROL_INACTIVE;
 
 static FS_GNSS_Time_t savedTime;
-
-extern RTC_HandleTypeDef hrtc;
 
 void FS_ActiveControl_DataReady_Callback(void);
 void FS_ActiveControl_TimeReady_Callback(bool validTime);
@@ -86,6 +86,7 @@ void FS_ActiveControl_Init(void)
 
 	// Initialize state
 	hasFix = false;
+	rtcUpdated = false;
 	state = FS_CONTROL_ACTIVE;
 
 	// Initialize saved GNSS time
@@ -94,23 +95,6 @@ void FS_ActiveControl_Init(void)
 
 void FS_ActiveControl_DeInit(void)
 {
-	uint32_t epoch;
-	uint32_t timestamp;
-
-	uint16_t year;
-	uint8_t month;
-	uint8_t day;
-	uint8_t hour;
-	uint8_t min;
-	uint8_t sec;
-	uint16_t ms;
-
-	uint32_t offset_ms;
-	uint32_t ms_total;
-
-	RTC_TimeTypeDef sTime = {0};
-	RTC_DateTypeDef sDate = {0};
-
 	// Update state
 	state = FS_CONTROL_INACTIVE;
 
@@ -128,46 +112,6 @@ void FS_ActiveControl_DeInit(void)
 	FS_GNSS_TimeReady_SetCallback(NULL);
 	FS_GNSS_RawReady_SetCallback(NULL);
 	FS_GNSS_IntReady_SetCallback(NULL);
-
-	// Update RTC
-	if (savedTime.week != 0)
-	{
-		// Start of the year 2000 (gmtime epoch)
-		epoch = 1042 * 7 * 24 * 3600 + 518400;
-
-		// Calculate timestamp at start_time
-		timestamp = savedTime.week * 7 * 24 * 3600 - epoch;
-		timestamp += savedTime.towMS / 1000;
-
-		// Calculate millisecond part of date/time
-		ms = savedTime.towMS % 1000;
-
-		// Add the offset to milliseconds
-		offset_ms = HAL_GetTick() - savedTime.time;
-		ms_total = ms + offset_ms;
-
-		// Calculate new timestamp and milliseconds
-		timestamp += ms_total / 1000;
-		ms = ms_total % 1000;
-
-		// Convert back to date/time
-		gmtime_r(timestamp, &year, &month, &day, &hour, &min, &sec);
-
-		// Update RTC
-		sTime.Hours = hour;
-		sTime.Minutes = min;
-		sTime.Seconds = sec;
-		sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
-		sTime.StoreOperation = RTC_STOREOPERATION_RESET;
-
-		sDate.WeekDay = RTC_WEEKDAY_MONDAY;
-		sDate.Month = month;
-		sDate.Date = day;
-		sDate.Year = year % 100;
-
-		HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
-		HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
-	}
 }
 
 void FS_Baro_DataReady_Callback(void)
@@ -219,9 +163,6 @@ void FS_ActiveControl_DataReady_Callback(void)
 	{
 		// Save to log file
 		FS_Log_WriteGNSSData(data);
-
-		// Update log path
-		FS_Log_UpdatePath(data);
 	}
 
 	// Update BLE characteristic
@@ -255,6 +196,13 @@ void FS_ActiveControl_TimeReady_Callback(bool validTime)
 
 		// Update saved GNSS time
 		memcpy(&savedTime, gnssTime, sizeof(FS_GNSS_Time_t));
+
+		// Set RTC on first valid time with 3D fix
+		if (hasFix && !rtcUpdated)
+		{
+			FS_RTC_SetFromGNSS(&savedTime);
+			rtcUpdated = true;
+		}
 	}
 }
 

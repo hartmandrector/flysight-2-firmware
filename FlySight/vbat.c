@@ -24,6 +24,7 @@
 #include "main.h"
 #include "app_common.h"
 #include "log.h"
+#include "sensor_time.h"
 #include "stm32_seq.h"
 #include "vbat.h"
 
@@ -110,7 +111,7 @@ void FS_VBAT_ConversionComplete(void)
 	HAL_GPIO_WritePin(VBAT_EN_GPIO_Port, VBAT_EN_Pin, GPIO_PIN_RESET);
 
 	// Get battery voltage
-	vbatData.time = HAL_GetTick();
+	vbatData.time = FS_SensorTime_GetTicks();
 	uint16_t temp = HAL_ADC_GetValue(&hadc1);
 	vbatData.voltage = __ADC_CALC_DATA_VOLTAGE(VDDA_APPLI, temp * 2);
 

@@ -64,7 +64,7 @@ typedef struct
 
 typedef struct
 {
-	uint32_t time;		// ms
+	uint64_t time;		// us
 	uint32_t towMS;     // Time pulse time of week     (ms)
 	uint16_t week;      // Time pulse week number
 } FS_GNSS_Time_t;

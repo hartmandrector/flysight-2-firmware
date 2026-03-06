@@ -28,6 +28,7 @@
 #include "config.h"
 #include "imu.h"
 #include "log.h"
+#include "sensor_time.h"
 #include "stm32_seq.h"
 
 #define IMU_OP_TIMEOUT   100
@@ -403,7 +404,7 @@ void FS_IMU_Read(void)
 		return;
 	}
 
-	imuData.time = HAL_GetTick();
+	imuData.time = FS_SensorTime_GetTicks();
 
 	if (handleRead)
 	{

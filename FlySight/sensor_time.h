@@ -21,21 +21,14 @@
 **  Website: http://flysight.ca/                                          **
 ****************************************************************************/
 
-#ifndef BARO_H_
-#define BARO_H_
+#ifndef SENSOR_TIME_H_
+#define SENSOR_TIME_H_
 
-typedef struct
-{
-	uint64_t time;			// us
-	int32_t pressure;		// Pa * 100
-	int16_t temperature;	// degrees C * 100
-} FS_Baro_Data_t;
+#include <stdint.h>
 
-void FS_Baro_Init(void);
-HAL_StatusTypeDef FS_Baro_Start(void);
-void FS_Baro_Stop(void);
-void FS_Baro_Read(void);
-const FS_Baro_Data_t *FS_Baro_GetData(void);
-void FS_Baro_DataReady_Callback(void);
+void FS_SensorTime_Init(void);
+void FS_SensorTime_Start(void);
+void FS_SensorTime_Stop(void);
+uint64_t FS_SensorTime_GetTicks(void);
 
-#endif /* BARO_H_ */
+#endif /* SENSOR_TIME_H_ */

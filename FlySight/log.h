@@ -52,6 +52,4 @@ void FS_Log_WriteVBATData(const FS_VBAT_Data_t *current);
 void FS_Log_WriteEvent(const char *format, ...);
 void FS_Log_WriteEventAsync(const char *format, ...);
 
-void FS_Log_UpdatePath(const FS_GNSS_Data_t *current);
-
 #endif /* LOG_H_ */

@@ -29,7 +29,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "rtc_util.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -112,17 +112,30 @@ DWORD get_fattime(void)
   RTC_DateTypeDef sDate;
   RTC_TimeTypeDef sTime;
 
-  /* Get RTC time and date */
+  uint16_t year;
+  uint8_t  month, day, hour, min, sec;
+
+  /* Get RTC time and date (UTC) */
   HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
   HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
-  /* Convert to DWORD format */
-  return ((DWORD) (sDate.Year + 20) << 25) +
-         ((DWORD) sDate.Month       << 21) +
-         ((DWORD) sDate.Date        << 16) +
-         ((DWORD) sTime.Hours       << 11) +
-         ((DWORD) sTime.Minutes     << 5)  +
-         ((DWORD) (sTime.Seconds / 2));
+  /* Convert to local time */
+  year  = 2000 + sDate.Year;
+  month = sDate.Month;
+  day   = sDate.Date;
+  hour  = sTime.Hours;
+  min   = sTime.Minutes;
+  sec   = sTime.Seconds;
+
+  FS_RTC_AdjustToLocal(&year, &month, &day, &hour, &min, &sec);
+
+  /* Convert to DWORD format (FAT year is offset from 1980) */
+  return ((DWORD) (year - 1980) << 25) +
+         ((DWORD) month         << 21) +
+         ((DWORD) day           << 16) +
+         ((DWORD) hour          << 11) +
+         ((DWORD) min           << 5)  +
+         ((DWORD) (sec / 2));
   /* USER CODE END get_fattime */
 }
 

@@ -32,8 +32,12 @@
 #include "log.h"
 #include "state.h"
 #include "stm32_seq.h"
+#include "rtc_util.h"
+#include "sensor_time.h"
 #include "time.h"
 #include "version.h"
+
+extern RTC_HandleTypeDef hrtc;
 
 #define LOG_TIMEOUT     50  // Write timeout
 
@@ -54,7 +58,7 @@
 
 typedef struct
 {
-	uint32_t time;
+	uint64_t time;			// us
 	char     message[EVENT_MESSAGE_MAX_LEN];
 } FS_Log_Event_t;
 
@@ -110,8 +114,13 @@ static FIL eventFile;
 
 static uint8_t timer_id;
 
-static bool validDateTime;
-static FS_GNSS_Data_t saved_data;
+static bool     validDateTime;
+static uint16_t saved_year;
+static uint8_t  saved_month;
+static uint8_t  saved_day;
+static uint8_t  saved_hour;
+static uint8_t  saved_min;
+static uint8_t  saved_sec;
 
 static uint32_t updateCount;
 static uint32_t updateTotalTime;
@@ -222,7 +231,7 @@ void FS_Log_UpdateHum(void)
 	*(--ptr) = '\n';
 	ptr = writeInt32ToBuf(ptr, data->temperature, 1, 1, '\r');
 	ptr = writeInt32ToBuf(ptr, data->humidity,    1, 1, ',');
-	ptr = writeInt32ToBuf(ptr, data->time,        3, 1, ',');
+	ptr = writeInt64ToBuf(ptr, data->time,        6, 1, ',');
 	*(--ptr) = ',';
 	*(--ptr) = 'M';
 	*(--ptr) = 'U';
@@ -253,7 +262,7 @@ void FS_Log_UpdateBaro(void)
 	*(--ptr) = '\n';
 	ptr = writeInt32ToBuf(ptr, data->temperature, 2, 1, '\r');
 	ptr = writeInt32ToBuf(ptr, data->pressure,    2, 1, ',');
-	ptr = writeInt32ToBuf(ptr, data->time,        3, 1, ',');
+	ptr = writeInt64ToBuf(ptr, data->time,        6, 1, ',');
 	*(--ptr) = ',';
 	*(--ptr) = 'O';
 	*(--ptr) = 'R';
@@ -287,7 +296,7 @@ void FS_Log_UpdateMag(void)
 	ptr = writeInt32ToBuf(ptr, data->z,           3, 1, ',');
 	ptr = writeInt32ToBuf(ptr, data->y,           3, 1, ',');
 	ptr = writeInt32ToBuf(ptr, data->x,           3, 1, ',');
-	ptr = writeInt32ToBuf(ptr, data->time,        3, 1, ',');
+	ptr = writeInt64ToBuf(ptr, data->time,        6, 1, ',');
 	*(--ptr) = ',';
 	*(--ptr) = 'G';
 	*(--ptr) = 'A';
@@ -407,7 +416,7 @@ void FS_Log_UpdateTime(void)
 	*(--ptr) = '\n';
 	ptr = writeInt32ToBuf(ptr, time->week,        0, 0, '\r');
 	ptr = writeInt32ToBuf(ptr, time->towMS,       3, 1, ',');
-	ptr = writeInt32ToBuf(ptr, time->time,        3, 1, ',');
+	ptr = writeInt64ToBuf(ptr, time->time,        6, 1, ',');
 	*(--ptr) = ',';
 	*(--ptr) = 'E';
 	*(--ptr) = 'M';
@@ -463,7 +472,7 @@ void FS_Log_UpdateIMU(void)
 	ptr = writeInt32ToBuf(ptr, data->wz,          3, 1, ',');
 	ptr = writeInt32ToBuf(ptr, data->wy,          3, 1, ',');
 	ptr = writeInt32ToBuf(ptr, data->wx,          3, 1, ',');
-	ptr = writeInt32ToBuf(ptr, data->time,        3, 1, ',');
+	ptr = writeInt64ToBuf(ptr, data->time,        6, 1, ',');
 	*(--ptr) = ',';
 	*(--ptr) = 'U';
 	*(--ptr) = 'M';
@@ -493,7 +502,7 @@ void FS_Log_UpdateVBAT(void)
 
 	*(--ptr) = '\n';
 	ptr = writeInt32ToBuf(ptr, data->voltage, 3, 1, '\r');
-	ptr = writeInt32ToBuf(ptr, data->time,    3, 1, ',');
+	ptr = writeInt64ToBuf(ptr, data->time,    6, 1, ',');
 	*(--ptr) = ',';
 	*(--ptr) = 'T';
 	*(--ptr) = 'A';
@@ -515,7 +524,7 @@ void FS_Log_WriteEventEntry(const FS_Log_Event_t *entry)
 
 	// Write to disk
 	ptr = row + sizeof(row);
-	ptr = writeInt32ToBuf(ptr, entry->time, 3, 1, ',');
+	ptr = writeInt64ToBuf(ptr, entry->time, 6, 1, ',');
 	*(--ptr) = ',';
 	*(--ptr) = 'T';
 	*(--ptr) = 'N';
@@ -767,7 +776,33 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 	vbatWrI = 0;
 	vbatUsed = 0;
 
-	validDateTime = false;
+	// Check if RTC has been previously set by GNSS
+	if (FS_RTC_IsValid())
+	{
+		RTC_TimeTypeDef sTime;
+		RTC_DateTypeDef sDate;
+
+		// Must call GetTime before GetDate to lock shadow registers
+		HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+		HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+
+		saved_year  = 2000 + sDate.Year;
+		saved_month = sDate.Month;
+		saved_day   = sDate.Date;
+		saved_hour  = sTime.Hours;
+		saved_min   = sTime.Minutes;
+		saved_sec   = sTime.Seconds;
+
+		// Apply timezone offset to get local time for folder naming
+		FS_RTC_AdjustToLocal(&saved_year, &saved_month, &saved_day,
+				&saved_hour, &saved_min, &saved_sec);
+
+		validDateTime = true;
+	}
+	else
+	{
+		validDateTime = false;
+	}
 
 	updateCount = 0;
 	updateTotalTime = 0;
@@ -877,29 +912,10 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 	return HAL_OK;
 }
 
-static void FS_Log_AdjustDateTime(uint16_t *year, uint8_t *month, uint8_t *day,
-		uint8_t *hour, uint8_t *min, uint8_t *sec)
-{
-	uint32_t timestamp;
-
-	// Convert UTC date/time to a single value, offset it, and convert back
-	timestamp = mk_gmtime(*year, *month, *day, *hour, *min, *sec);
-	timestamp += FS_Config_Get()->tz_offset;
-	gmtime_r(timestamp, year, month, day, hour, min, sec);
-}
-
 void FS_Log_DeInit(uint32_t temp_folder)
 {
-	uint16_t year;
-	uint8_t  month;
-	uint8_t  day;
-	uint8_t  hour;
-	uint8_t  min;
-	uint8_t  sec;
-
 	char date[15], time[15];
 	char oldPath[50];
-    FILINFO fno;
 
 	if (logState == LOG_STATE_ACTIVE)
 	{
@@ -956,37 +972,40 @@ void FS_Log_DeInit(uint32_t temp_folder)
 
 	if ((logState == LOG_STATE_ACTIVE) && validDateTime)
 	{
-		// Get date/time
-		year = saved_data.year;
-		month = saved_data.month;
-		day = saved_data.day;
-		hour = saved_data.hour;
-		min = saved_data.min;
-		sec = saved_data.sec;
+		uint8_t retries;
+		uint8_t try_sec;
 
-		// Adjust using timezone
-		FS_Log_AdjustDateTime(&year, &month, &day, &hour, &min, &sec);
-
-		// Format date and time
-		sprintf(date, "%02d-%02d-%02d", year % 100, month, day);
-		sprintf(time, "%02d-%02d-%02d", hour, min, sec);
+		// Format date from saved local time (timezone already applied at init)
+		sprintf(date, "%02d-%02d-%02d", saved_year % 100, saved_month, saved_day);
+		sprintf(time, "%02d-%02d-%02d", saved_hour, saved_min, saved_sec);
 
 		sprintf(path, "/%s", date);
 		if (f_stat(path, 0) != FR_OK)
 		{
-			// Create new folder
+			// Create date folder
 			f_mkdir(path);
 		}
 
-		// Move temporary folder
+		// Build target path
 		sprintf(oldPath, "/temp/%04lu", temp_folder);
 		sprintf(path, "/%s/%s", date, time);
 
-		// Delete date/time folder if it exists
-		delete_node(path, sizeof(path) / sizeof(path[0]), &fno);
+		// Handle collisions: if target exists, increment seconds and retry
+		retries = 0;
+		try_sec = saved_sec;
+		while (f_stat(path, 0) == FR_OK && retries < 60)
+		{
+			try_sec = (try_sec + 1) % 60;
+			sprintf(time, "%02d-%02d-%02d", saved_hour, saved_min, try_sec);
+			sprintf(path, "/%s/%s", date, time);
+			retries++;
+		}
 
-		// Rename temporary folder
-		f_rename(oldPath, path);
+		if (retries < 60)
+		{
+			// Rename temporary folder to date/time folder
+			f_rename(oldPath, path);
+		}
 	}
 
 	// Return the logging module to its initial state for the next session.
@@ -1089,16 +1108,6 @@ void FS_Log_WriteGNSSData(const FS_GNSS_Data_t *current)
 			// Update buffer statistics
 			gnssUsed = GNSS_COUNT;
 		}
-	}
-}
-
-void FS_Log_UpdatePath(const FS_GNSS_Data_t *current)
-{
-	if ((current->gpsFix == 3) && (!validDateTime))
-	{
-		// Remember date and time
-		memcpy(&saved_data, current, sizeof(FS_GNSS_Data_t));
-		validDateTime = true;
 	}
 }
 
@@ -1209,7 +1218,7 @@ void FS_Log_WriteEvent(const char *format, ...)
 	if (logState != LOG_STATE_ACTIVE) return;
 	if (!(enable_flags & FS_LOG_ENABLE_EVENT)) return;
 
-	entry.time = HAL_GetTick();
+	entry.time = FS_SensorTime_GetTicks();
 
 	va_start(args, format);
 	vsnprintf(entry.message, EVENT_MESSAGE_MAX_LEN, format, args);
@@ -1231,7 +1240,7 @@ void FS_Log_WriteEventAsync(const char *format, ...)
 		// Copy to circular buffer
 		FS_Log_Event_t *entry = &eventBuf[eventWrI % EVENT_COUNT];
 
-		entry->time = HAL_GetTick();
+		entry->time = FS_SensorTime_GetTicks();
 
 		va_start(args, format);
 		vsnprintf(entry->message, EVENT_MESSAGE_MAX_LEN, format, args);

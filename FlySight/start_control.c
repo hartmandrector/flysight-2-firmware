@@ -34,6 +34,7 @@
 #include "led.h"
 #include "log.h"
 #include "state.h"
+#include "rtc_util.h"
 #include "stm32_seq.h"
 #include "time.h"
 #include "custom_stm.h"
@@ -66,6 +67,8 @@ static volatile enum {
 
 static uint8_t countdown;
 static FS_GNSS_Int_t gnss_int;
+static FS_GNSS_Time_t savedTime;
+static volatile bool rtcUpdated;
 
 extern uint8_t SizeSp_Control_Point;
 
@@ -108,7 +111,11 @@ void FS_StartControl_Init(void)
 
 	// Initialize state
 	hasFix = false;
+	rtcUpdated = false;
 	state = FS_CONTROL_IDLE;
+
+	// Initialize saved GNSS time
+	memset(&savedTime, 0, sizeof(FS_GNSS_Time_t));
 }
 
 void FS_StartControl_DeInit(void)
@@ -141,12 +148,6 @@ void FS_StartControl_DataReady_Callback(void)
 
 	if (state == FS_CONTROL_INACTIVE) return;
 
-	if (FS_Config_Get()->enable_logging)
-	{
-		// Update log path
-		FS_Log_UpdatePath(data);
-	}
-
 	// Update BLE characteristic
 	Custom_GNSS_Update(data);
 
@@ -155,6 +156,8 @@ void FS_StartControl_DataReady_Callback(void)
 
 void FS_StartControl_TimeReady_Callback(bool validTime)
 {
+	const FS_GNSS_Time_t *gnssTime;
+
 	if (state == FS_CONTROL_INACTIVE) return;
 
 	if (hasFix)
@@ -162,6 +165,21 @@ void FS_StartControl_TimeReady_Callback(bool validTime)
 		// Turn off LED
 		FS_LED_Off();
 		HW_TS_Start(led_timer_id, LED_BLINK_TICKS);
+	}
+
+	if (validTime)
+	{
+		gnssTime = FS_GNSS_GetTime();
+
+		// Update saved GNSS time
+		memcpy(&savedTime, gnssTime, sizeof(FS_GNSS_Time_t));
+
+		// Set RTC on first valid time with 3D fix
+		if (hasFix && !rtcUpdated)
+		{
+			FS_RTC_SetFromGNSS(&savedTime);
+			rtcUpdated = true;
+		}
 	}
 }
 

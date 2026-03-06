@@ -26,7 +26,7 @@
 
 typedef struct
 {
-	uint32_t time;			// ms
+	uint64_t time;			// us
 	int32_t wx;				// deg/s * 1000
 	int32_t wy;				// deg/s * 1000
 	int32_t wz;				// deg/s * 1000

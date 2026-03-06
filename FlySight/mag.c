@@ -28,6 +28,7 @@
 #include "config.h"
 #include "log.h"
 #include "mag.h"
+#include "sensor_time.h"
 #include "sensor.h"
 
 #define MAG_ADDR              0x3c
@@ -227,7 +228,7 @@ void FS_Mag_Read(void)
 	}
 
 	sensor_is_busy = true;
-	magData.time = HAL_GetTick();
+	magData.time = FS_SensorTime_GetTicks();
 	magDataGood = false;
 
 	if (FS_Sensor_ReadAsync(MAG_ADDR, MAG_REG_OUTX_L_REG, dataBuf, 6, FS_Mag_Read_Callback_1) != HAL_OK)

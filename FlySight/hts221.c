@@ -28,6 +28,7 @@
 #include "hum.h"
 #include "log.h"
 #include "sensor.h"
+#include "sensor_time.h"
 
 #define HTS221_ADDR               0xbe
 #define HTS221_REG_WHO_AM_I       (0x0f | 0x80)
@@ -261,7 +262,7 @@ void FS_HTS221_Read(void)
 	}
 
 	sensor_is_busy = true;
-	humData->time = HAL_GetTick();
+	humData->time = FS_SensorTime_GetTicks();
 	if (FS_Sensor_ReadAsync(HTS221_ADDR, HTS221_REG_HUMIDITY_OUT_L, dataBuf, 4, FS_HTS221_Read_Callback) != HAL_OK)
 	{
 		// Abort this measurement cycle and reset the state to allow the next one.
