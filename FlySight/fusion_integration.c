@@ -213,8 +213,24 @@ void FS_Fusion_UpdateMag(int16_t x, int16_t y, int16_t z)
     /* Step 1: Apply magnetometer calibration in sensor frame */
     FusionVector cal_mag = FusionModelMagnetic(raw_mag, mag_soft_iron, mag_hard_iron);
     
-    /* Step 2: Apply coordinate transform for LIS2MDL on back of PCB */
-    /* Body frame: X = -sensor_X, Y = +sensor_Y, Z = -sensor_Z */
+    /* Step 2: Apply coordinate transform for LIS2MDL on back of PCB
+     * Sensor → Device body frame: X = -sensor_X, Y = +sensor_Y, Z = -sensor_Z
+     *
+     * Device body frame represents the sensor flat on a table, LED facing North:
+     *   X = East (right edge)
+     *   Y = North (LED/light side)
+     *   Z = Up (top face toward sky)
+     *
+     * At identity quaternion (1,0,0,0) the device is flat with LED pointing North.
+     * This matches the FlySight2-Coordinate-Systems.md convention and keeps the
+     * firmware output intuitive for bench testing. Downstream consumers (BASElineXR,
+     * sensor fusion viewer) handle any additional frame transforms needed for
+     * mounted/flight configurations.
+     *
+     * Note: A CG-mounted sensor could instead map directly to an aerodynamic NED
+     * body frame aligned with the vehicle chord line, but the flat-on-table
+     * convention is simpler and all existing calibrations assume it.
+     */
     last_mag = (FusionVector){
         .axis = {
             .x = -cal_mag.axis.x,
@@ -273,6 +289,15 @@ void FS_Fusion_UpdateIMU(uint32_t time_ms,
     
     /* Apply accelerometer scale matrix calibration: corrected = M * raw */
     FusionVector accelerometer = FusionMatrixMultiply(accel_matrix, raw_accel);
+    
+    /* IMU data stays in device body frame (flat on table, LED = North):
+     *   X = East, Y = North (LED), Z = Up
+     *
+     * The x-io Fusion library receives data in this frame and outputs
+     * quaternions accordingly. Downstream consumers handle any additional
+     * transforms for mounted/flight configurations.
+     * See mag update comment for full convention rationale.
+     */
     
     /* Run AHRS update */
     if (mag_valid) {
