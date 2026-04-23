@@ -337,11 +337,13 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
                 *   `0x20` (`GYRO_BLE_BIT_TEMPERATURE`): Temperature included.
             *   If `GYRO_BLE_BIT_TIME` set: `time` (uint32_t). Timestamp in ms. (4 bytes)
             *   If `GYRO_BLE_BIT_GYRO` set:
-                *   `gx` (int16_t). X-axis angular rate in mdps. (2 bytes)
-                *   `gy` (int16_t). Y-axis angular rate in mdps. (2 bytes)
-                *   `gz` (int16_t). Z-axis angular rate in mdps. (2 bytes)
+                *   `wx` (int32_t). X-axis angular rate in deg/s × 1000. (4 bytes)
+                *   `wy` (int32_t). Y-axis angular rate in deg/s × 1000. (4 bytes)
+                *   `wz` (int32_t). Z-axis angular rate in deg/s × 1000. (4 bytes)
+                *   **Note:** To convert to deg/s: `gyro_dps = wx / 1000.0`.
             *   If `GYRO_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
         *   Default Mask: `0xE0` (all fields enabled).
+        *   Typical payload with default mask: 19 bytes.
         *   **Transmission Order:** When IMU data is available, accelerometer packets are transmitted **first**, followed by gyroscope packets.
 
     *   **`SD_MAG_Measurement` (Magnetometer)**
@@ -518,7 +520,7 @@ FlySight 2 also implements standard BLE services:
 | Sensor Data Service     |                           | `00000001-cc7a-482a-984a-7f2ed5b3e58f`       | Sensor_Data        |                        | N/A                |
 | GNSS Measurement        | `SD_GNSS_Measurement`     | `00000000-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 44 (Var)           |
 | Sensor Data Control     | `SD_Control_Point`        | `00000006-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Write, Indicate        | 20 (Var)           |
-| Baro Measurement        | `SD_BARO_Measurement`     | `00000008-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 10 (Var)           |
+| Baro Measurement        | `SD_BARO_Measurement`     | `00000008-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 12 (Var)           |
 | Accel Measurement       | `SD_ACCEL_Measurement`    | `00000009-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 20 (Var)           |
 | Gyro Measurement        | `SD_GYRO_Measurement`     | `0000000A-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 20 (Var)           |
 | Mag Measurement         | `SD_MAG_Measurement`      | `0000000B-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 14 (Var)           |

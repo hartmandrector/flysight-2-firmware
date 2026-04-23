@@ -87,7 +87,7 @@ FS_BLE_ValidationResult_t FS_BLE_ValidateConfig(const FS_Config_Data_t *config)
     CHECK_SENSOR(enable_baro, baro_odr, ble_baro_divider, baro_odr_table, 11);
     CHECK_SENSOR(enable_hum, hum_odr, ble_hum_divider, hum_odr_table, 9);
     CHECK_SENSOR(enable_imu, accel_odr, ble_accel_divider, accel_odr_table, 19);
-    CHECK_SENSOR(enable_imu, gyro_odr, ble_gyro_divider, gyro_odr_table, 27);
+    CHECK_SENSOR(enable_imu, gyro_odr, ble_gyro_divider, gyro_odr_table, 19);
     CHECK_SENSOR(enable_mag, mag_odr, ble_mag_divider, mag_odr_table, 13);
     
     #undef CHECK_SENSOR
@@ -145,8 +145,8 @@ void FS_BLE_AutoCalculateDividers(FS_Config_Data_t *config)
           hum_odr_table, sizeof(hum_odr_table)/sizeof(hum_odr_table[0]), 9, 0, 0, false },
         { config->enable_imu, &config->ble_accel_divider, config->accel_odr,
           accel_odr_table, sizeof(accel_odr_table)/sizeof(accel_odr_table[0]), 19, 0, 0, false },
-        { config->enable_imu, &config->ble_gyro_divider, config->gyro_odr,
-          gyro_odr_table, sizeof(gyro_odr_table)/sizeof(gyro_odr_table[0]), 27, 0, 0, false },
+                { config->enable_imu, &config->ble_gyro_divider, config->gyro_odr,
+                    gyro_odr_table, sizeof(gyro_odr_table)/sizeof(gyro_odr_table[0]), 19, 0, 0, false },
         { config->enable_mag, &config->ble_mag_divider, config->mag_odr,
           mag_odr_table, sizeof(mag_odr_table)/sizeof(mag_odr_table[0]), 13, 0, 0, false },
     };
