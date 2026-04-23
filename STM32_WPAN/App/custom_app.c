@@ -247,6 +247,7 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
         const FS_Baro_Data_t *data = FS_Baro_GetData();
         uint8_t packet[BARO_BLE_MAX_LEN];
         uint8_t len = BARO_BLE_Build(data, packet);
+        SizeSd_Baro_Measurement = len;
         Custom_STM_App_Update_Char(CUSTOM_STM_SD_BARO_MEASUREMENT, packet);
       }
       /* USER CODE END CUSTOM_STM_SD_BARO_MEASUREMENT_READ_EVT */
@@ -272,6 +273,7 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
         const FS_Hum_Data_t *data = FS_Hum_GetData();
         uint8_t packet[HUM_BLE_MAX_LEN];
         uint8_t len = HUM_BLE_Build(data, packet);
+        SizeSd_Hum_Measurement = len;
         Custom_STM_App_Update_Char(CUSTOM_STM_SD_HUM_MEASUREMENT, packet);
       }
       /* USER CODE END CUSTOM_STM_SD_HUM_MEASUREMENT_READ_EVT */
@@ -297,6 +299,7 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
         const FS_IMU_Data_t *data = FS_IMU_GetData();
         uint8_t packet[ACCEL_BLE_MAX_LEN];
         uint8_t len = ACCEL_BLE_Build(data, packet);
+        SizeSd_Accel_Measurement = len;
         Custom_STM_App_Update_Char(CUSTOM_STM_SD_ACCEL_MEASUREMENT, packet);
       }
       /* USER CODE END CUSTOM_STM_SD_ACCEL_MEASUREMENT_READ_EVT */
@@ -322,6 +325,7 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
         const FS_IMU_Data_t *data = FS_IMU_GetData();
         uint8_t packet[GYRO_BLE_MAX_LEN];
         uint8_t len = GYRO_BLE_Build(data, packet);
+        SizeSd_Gyro_Measurement = len;
         Custom_STM_App_Update_Char(CUSTOM_STM_SD_GYRO_MEASUREMENT, packet);
       }
       /* USER CODE END CUSTOM_STM_SD_GYRO_MEASUREMENT_READ_EVT */
@@ -347,6 +351,7 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
         const FS_Mag_Data_t *data = FS_Mag_GetData();
         uint8_t packet[MAG_BLE_MAX_LEN];
         uint8_t len = MAG_BLE_Build(data, packet);
+        SizeSd_Mag_Measurement = len;
         Custom_STM_App_Update_Char(CUSTOM_STM_SD_MAG_MEASUREMENT, packet);
       }
       /* USER CODE END CUSTOM_STM_SD_MAG_MEASUREMENT_READ_EVT */
