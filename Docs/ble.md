@@ -277,7 +277,7 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
         *   Properties: **Read, Notify**
         *   Permissions: Encrypted Read/Write required.
         *   Usage: Streams barometric sensor data. Updates only when FlySight is in Active Mode. Central must enable notifications.
-        *   Max Length: 10 bytes (`SizeSd_Baro_Measurement`). Variable length.
+        *   Max Length: 12 bytes (`SizeSd_Baro_Measurement`). Variable length.
         *   **Data Format (Little Endian):**
             *   Byte 0: `mask` (uint8). Bitmask indicating which fields are present.
                 *   `0x80` (`BARO_BLE_BIT_TIME`): Timestamp included.
@@ -498,8 +498,7 @@ FlySight 2 also implements standard BLE services:
     *   **GNSS:** Standard WGS84 coordinate system (latitude/longitude in degrees × 10⁷, altitude in mm).
 *   **Data Type Precision:**
     *   **Accelerometer:** int32_t, g × 100000 (e.g., 1g = 100000, 9.81m/s² = 100000)
-    *   **Gyroscope:** int16_t, mdps (millidegrees per second)
-    *   **Magnetometer:** int16_t, mGauss (milligauss)
+    *   **Gyroscope:** int32_t, deg/s × 1000 (e.g., 90.0 dps = 90000)
     *   **Magnetometer:** int16_t, mGauss (milligauss)
     *   **Barometer:** int32_t, Pa (pascals)
     *   **Humidity:** uint16_t, % × 10 (e.g., 45.3% = 453)
