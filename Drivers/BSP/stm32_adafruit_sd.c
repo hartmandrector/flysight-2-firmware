@@ -134,6 +134,15 @@ typedef struct {
 #define SD_CSD_STRUCT_V1          0x2    /* CSD struct version V1 */
 #define SD_CSD_STRUCT_V2          0x1    /* CSD struct version V2 */
 
+#define SD_SWITCH_STATUS_SIZE             64U
+#define SD_SWITCH_FUNC_CHECK_HIGH_SPEED   0x00FFFFF1U
+#define SD_SWITCH_FUNC_SET_HIGH_SPEED     0x80FFFFF1U
+#define SD_SWITCH_STATUS_FG1_SUPPORT      13U
+#define SD_SWITCH_STATUS_FG1_SELECTED     16U
+#define SD_SWITCH_FG1_HIGH_SPEED_SUPPORT  0x02U
+#define SD_SWITCH_FG1_HIGH_SPEED_SELECTED 0x01U
+#define SD_SWITCH_FG1_SELECTED_MASK       0x0FU
+
 
 /**
   * @brief  SD ansewer format
@@ -163,6 +172,7 @@ typedef enum {
   */
 #define SD_CMD_GO_IDLE_STATE          0   /* CMD0 = 0x40  */
 #define SD_CMD_SEND_OP_COND           1   /* CMD1 = 0x41  */
+#define SD_CMD_SWITCH_FUNC            6   /* CMD6 = 0x46  */
 #define SD_CMD_SEND_IF_COND           8   /* CMD8 = 0x48  */
 #define SD_CMD_SEND_CSD               9   /* CMD9 = 0x49  */
 #define SD_CMD_SEND_CID               10  /* CMD10 = 0x4A */
@@ -263,6 +273,8 @@ static uint8_t SD_GetCIDRegister(SD_CID* Cid);
 static uint8_t SD_GetCSDRegister(SD_CSD* Csd);
 static uint8_t SD_GetDataResponse(void);
 static uint8_t SD_GoIdleState(void);
+static uint8_t SD_EnableHighSpeedMode(void);
+static uint8_t SD_ReadSwitchStatus(uint32_t Arg, uint8_t *Status);
 static SD_CmdAnswer_typedef SD_SendCmd(uint8_t Cmd, uint32_t Arg, uint8_t Crc, uint8_t Answer);
 static uint8_t SD_WaitData(uint8_t data);
 static uint8_t SD_ReadData(void);
@@ -301,8 +313,16 @@ uint8_t BSP_SD_Init(void)
 
   if (result == BSP_SD_OK)
   {
-    /* Switch to high speed (32 MHz) for data transfer */
-    SD_IO_SetFastSpeed();
+    if (SD_EnableHighSpeedMode() == BSP_SD_OK)
+    {
+      /* Card accepted SD high-speed mode; restore CubeMX operating speed. */
+      SD_IO_SetFastSpeed();
+    }
+    else
+    {
+      /* Keep cards that stay in default-speed mode below the 25 MHz limit. */
+      SD_IO_SetDefaultSpeed();
+    }
   }
 
   return result;
@@ -801,6 +821,76 @@ uint8_t SD_GetCIDRegister(SD_CID* Cid)
 
   /* Return the reponse */
   return retr;
+}
+
+/**
+  * @brief  Reads the 64-byte CMD6 switch function status block.
+  * @param  Arg: CMD6 argument.
+  * @param  Status: Pointer to a 64-byte switch status buffer.
+  * @retval SD status
+  */
+static uint8_t SD_ReadSwitchStatus(uint32_t Arg, uint8_t *Status)
+{
+  uint8_t retr = BSP_SD_ERROR;
+  uint16_t counter;
+  SD_CmdAnswer_typedef response;
+
+  response = SD_SendCmd(SD_CMD_SWITCH_FUNC, Arg, 0xFF, SD_ANSWER_R1_EXPECTED);
+  if (response.r1 == SD_R1_NO_ERROR)
+  {
+    if (SD_WaitData(SD_TOKEN_START_DATA_SINGLE_BLOCK_READ) == BSP_SD_OK)
+    {
+      for (counter = 0; counter < SD_SWITCH_STATUS_SIZE; counter++)
+      {
+        Status[counter] = SD_IO_WriteByte(SD_DUMMY_BYTE);
+      }
+
+      /* Discard CRC bytes. */
+      SD_IO_WriteByte(SD_DUMMY_BYTE);
+      SD_IO_WriteByte(SD_DUMMY_BYTE);
+
+      retr = BSP_SD_OK;
+    }
+  }
+
+  SD_IO_CSState(1);
+  SD_IO_WriteByte(SD_DUMMY_BYTE);
+
+  return retr;
+}
+
+/**
+  * @brief  Switches the card to SD high-speed mode using CMD6.
+  * @param  None
+  * @retval SD status
+  */
+static uint8_t SD_EnableHighSpeedMode(void)
+{
+  uint8_t status[SD_SWITCH_STATUS_SIZE];
+
+  if (SD_ReadSwitchStatus(SD_SWITCH_FUNC_CHECK_HIGH_SPEED, status) != BSP_SD_OK)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  /* CMD6 status is MSB-first; byte 13 bit 1 advertises access mode function 1. */
+  if ((status[SD_SWITCH_STATUS_FG1_SUPPORT] & SD_SWITCH_FG1_HIGH_SPEED_SUPPORT) == 0U)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  if (SD_ReadSwitchStatus(SD_SWITCH_FUNC_SET_HIGH_SPEED, status) != BSP_SD_OK)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  if ((status[SD_SWITCH_STATUS_FG1_SELECTED] & SD_SWITCH_FG1_SELECTED_MASK) !=
+      SD_SWITCH_FG1_HIGH_SPEED_SELECTED)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  return BSP_SD_OK;
 }
 
 /**
