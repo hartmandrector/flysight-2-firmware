@@ -26,13 +26,30 @@
 
 static volatile uint32_t overflow_count;
 
+#define SENSOR_TIME_TICK_HZ 1000000U
+
+static uint32_t FS_SensorTime_GetTIM2ClockHz(void)
+{
+	uint32_t tim2_clock_hz = HAL_RCC_GetPCLK1Freq();
+
+	if (LL_RCC_GetAPB1Prescaler() != LL_RCC_APB1_DIV_1)
+	{
+		tim2_clock_hz *= 2U;
+	}
+
+	return tim2_clock_hz;
+}
+
 void FS_SensorTime_Init(void)
 {
+	uint32_t tim2_clock_hz;
+
 	/* Enable TIM2 clock */
 	__HAL_RCC_TIM2_CLK_ENABLE();
 
 	/* Configure TIM2 as free-running 1 MHz counter */
-	TIM2->PSC = 31;          /* 32 MHz / 32 = 1 MHz = 1 us per tick */
+	tim2_clock_hz = FS_SensorTime_GetTIM2ClockHz();
+	TIM2->PSC = (tim2_clock_hz / SENSOR_TIME_TICK_HZ) - 1U;
 	TIM2->ARR = 0xFFFFFFFF;  /* Full 32-bit range */
 	TIM2->CNT = 0;
 	TIM2->CR1 = 0;           /* Upcounting, no auto-reload preload */
