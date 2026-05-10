@@ -68,6 +68,7 @@ The FlySight 2's operational mode affects BLE service availability, primarily du
     *   **File Transfer (File_Transfer service) is UNAVAILABLE** due to potential SD card conflicts with logging. Commands will likely return NAK (`0xf0`).
 *   **Config Selection Mode (Orange LED):** Entered via short press then long press from Idle. BLE connection may be possible, but file transfer is unavailable.
 *   **USB Mode (Red/Green LED):** Mass Storage Device mode. BLE connection may be possible, but **File Transfer (File_Transfer service) is UNAVAILABLE** due to USB using the file system.
+    *   BLE does not initiate USB attach/detach. Device State reset, firmware-install, and mode-control commands are rejected while USB mode is active.
 *   **Firmware Update Mode (Orange LED when plugged in):** Bootloader mode. BLE is inactive.
 *   **Pairing Request Mode (Pulsing Green LED):** Temporary mode (30s) entered via double-press from Idle. Allows connection from *any* device to initiate pairing. File transfer might be available after pairing is complete *within* this mode, but it's generally expected the app will proceed after pairing without extensive file ops immediately.
 *   **Start Mode (Orange LED):** Special mode for synchronized start timing. Entered via a ~1s power button press from Idle if `Active_Mode` in `flysight.txt` is set to `1`.
@@ -97,7 +98,8 @@ Control Point characteristics in the Sensor_Data, Starter_Pistol, and Device_Sta
     *   Write to the respective Control Point characteristic.
     *   Format: `[Command Opcode (uint8)] [Optional Parameters...]`
 *   **Response (FlySight to Central):**
-    *   Sent via an **Indication** on the same Control Point characteristic (client must enable indications and send an ACK for each indication received).
+    *   Sent via an **Indication** on the same Control Point characteristic when the client has enabled indications and a response is expected.
+    *   Device State terminal/mode commands may also be written blind. If indications are disabled and the command is accepted, FlySight schedules the requested action without sending a response.
     *   Format: `[Response ID (0xF0)] [Request Opcode (echoed)] [Status (uint8)] [Optional Response Data...]`
     *   **Status Codes (`CP_STATUS_*`):**
         *   `0x01`: Success (`CP_STATUS_SUCCESS`)
@@ -325,14 +327,27 @@ Provides information about the device's current operational state and allows for
         *   UUID: `00000007-8e22-4541-9d4c-21edae82ed19`
         *   Properties: **Write, Indicate**
         *   Permissions: Encrypted Read/Write required.
-        *   Usage: This characteristic is intended for future device state control commands. Currently, no specific commands are implemented. Writing any command will likely result in a `CP_STATUS_CMD_NOT_SUPPORTED` response.
+        *   Usage: Device-state queries, reset/install requests, and mode requests. Central enables indications if it wants an accepted/rejected response. Terminal and mode requests do not require indications; they may be written blind.
         *   Max Length: 20 bytes (`SizeDs_Control_Point`). Variable length.
         *   **Write Operations (Central to FlySight):**
-            *   Currently, no commands are defined.
+            *   `0x01` (`DS_CMD_GET_FW_VERSION`): Get firmware version string. Payload: none.
+            *   `0x02` (`DS_CMD_REBOOT_DEVICE`): Gracefully return to sleep, then reset. Payload: none.
+            *   `0x03` (`DS_CMD_GET_DEVICE_ID`): Get device ID. Payload: none.
+            *   `0x04` (`DS_CMD_INSTALL_UPLOADED_FIRMWARE`): Gracefully return to sleep, write `STANDALONE_LOADER_DWL_REQ` to the bootloader mailbox, then reset. Payload: none.
+            *   `0x10` (`DS_CMD_REQUEST_SLEEP`): Request sleep mode. Accepted from active, start, config, pairing, or sleep. Rejected from USB.
+            *   `0x11` (`DS_CMD_REQUEST_ACTIVE`): Request active mode. Accepted only from sleep.
+            *   `0x12` (`DS_CMD_REQUEST_START`): Request start mode. Accepted only from sleep.
+            *   `0x13` (`DS_CMD_REQUEST_CONFIG`): Request config mode. Accepted only from sleep.
+            *   `0x14` (`DS_CMD_REQUEST_PAIRING`): Request pairing mode. Accepted only from sleep.
+            *   USB mode is not requestable over BLE. USB entry/exit remains controlled by VBUS and the USB host.
         *   **Indication Responses (FlySight to Central, if indications enabled):**
-            *   Format: `[0xF0 (CP_RESPONSE_ID)] [Request Opcode] [Status]`
-            *   For any command written:
-                *   `[0xF0] [Received Opcode] [0x02 (CP_STATUS_CMD_NOT_SUPPORTED)]`
+            *   Format: `[0xF0 (CP_RESPONSE_ID)] [Request Opcode] [Status] [Optional Data]`
+            *   Query commands return optional data on success.
+            *   Reset/install/mode requests return `CP_STATUS_SUCCESS` when the request is accepted. The action is started after response progress or a short fallback timeout.
+            *   `CP_STATUS_BUSY`: another Device State terminal/mode request is pending.
+            *   `CP_STATUS_OPERATION_NOT_PERMITTED`: the request is not allowed from the current mode or by policy, including all such requests while USB mode is active.
+            *   `CP_STATUS_INVALID_PARAMETER`: payload length is invalid.
+            *   `CP_STATUS_CMD_NOT_SUPPORTED`: opcode is unknown.
 
 ### 5. Standard BLE Services
 

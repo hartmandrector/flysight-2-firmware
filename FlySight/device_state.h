@@ -37,6 +37,8 @@
 void DeviceState_Handle_DS_ControlPointWrite(const uint8_t *payload, uint8_t length,
                                              uint16_t conn_handle, uint8_t notification_enabled_flag);
 
+void DeviceState_Handle_DS_ControlPointNotificationComplete(uint16_t attr_handle);
+
 /**
  * @brief Initializes the Device State service module.
  */

@@ -30,6 +30,7 @@
 #include "button.h"
 #include "config_mode.h"
 #include "custom_app.h"
+#include "dbg_trace.h"
 #include "log.h"
 #include "mode.h"
 #include "pairing_mode.h"
@@ -42,6 +43,10 @@
 #define HOLD_MSEC    1000
 #define HOLD_TIMEOUT (HOLD_MSEC*1000/CFG_TS_TICK_VAL)
 
+#define STANDALONE_LOADER_NO_REQ   0x00000000U
+#define STANDALONE_LOADER_DWL_REQ  0x375AA32CU
+#define STANDALONE_LOADER_STATE    (*(volatile uint32_t *)0x20001700U)
+
 typedef FS_Mode_State_t FS_Mode_StateFunc_t(FS_Mode_Event_t event);
 
 static FS_Mode_State_t FS_Mode_State_Sleep(FS_Mode_Event_t event);
@@ -50,6 +55,10 @@ static FS_Mode_State_t FS_Mode_State_Config(FS_Mode_Event_t event);
 static FS_Mode_State_t FS_Mode_State_USB(FS_Mode_Event_t event);
 static FS_Mode_State_t FS_Mode_State_Pairing(FS_Mode_Event_t event);
 static FS_Mode_State_t FS_Mode_State_Start(FS_Mode_Event_t event);
+static FS_Mode_State_t FS_Mode_EnterRequestedState(void);
+static void FS_Mode_ClearRequestedState(void);
+static void FS_Mode_ExecutePendingTerminalAction(void);
+static void FS_Mode_ExecuteTerminalAction(FS_TerminalAction_t action);
 
 static FS_Mode_StateFunc_t *const mode_state_table[FS_MODE_STATE_COUNT] =
 {
@@ -62,6 +71,8 @@ static FS_Mode_StateFunc_t *const mode_state_table[FS_MODE_STATE_COUNT] =
 };
 
 static FS_Mode_State_t mode_state = FS_MODE_STATE_SLEEP;
+static FS_Mode_State_t requested_state = FS_MODE_STATE_COUNT;
+static FS_TerminalAction_t pending_terminal_action = FS_TERMINAL_ACTION_NONE;
 
 static FS_Mode_Event_t event_queue[QUEUE_LENGTH];
 static uint8_t queue_read = 0;
@@ -78,6 +89,58 @@ typedef enum
 } Button_State_t;
 
 Button_State_t button_state;
+
+static bool FS_Mode_HasPendingRequest(void)
+{
+	return (requested_state != FS_MODE_STATE_COUNT) ||
+		   (pending_terminal_action != FS_TERMINAL_ACTION_NONE);
+}
+
+static FS_Mode_RequestResult_t FS_Mode_ValidateStateRequest(FS_Mode_State_t target_state)
+{
+	FS_Mode_RequestResult_t result = FS_MODE_REQUEST_ACCEPTED;
+
+	if (target_state >= FS_MODE_STATE_COUNT)
+	{
+		result = FS_MODE_REQUEST_INVALID;
+	}
+	else if (FS_Mode_HasPendingRequest())
+	{
+		result = FS_MODE_REQUEST_BUSY;
+	}
+	else if ((mode_state == FS_MODE_STATE_USB) ||
+			 (target_state == FS_MODE_STATE_USB))
+	{
+		result = FS_MODE_REQUEST_NOT_ALLOWED;
+	}
+	else if ((mode_state != FS_MODE_STATE_SLEEP) &&
+			 (target_state != FS_MODE_STATE_SLEEP))
+	{
+		result = FS_MODE_REQUEST_NOT_ALLOWED;
+	}
+
+	return result;
+}
+
+static FS_Mode_RequestResult_t FS_Mode_ValidateTerminalAction(FS_TerminalAction_t action)
+{
+	FS_Mode_RequestResult_t result = FS_MODE_REQUEST_ACCEPTED;
+
+	if ((action <= FS_TERMINAL_ACTION_NONE) || (action >= FS_TERMINAL_ACTION_COUNT))
+	{
+		result = FS_MODE_REQUEST_INVALID;
+	}
+	else if (FS_Mode_HasPendingRequest())
+	{
+		result = FS_MODE_REQUEST_BUSY;
+	}
+	else if (mode_state == FS_MODE_STATE_USB)
+	{
+		result = FS_MODE_REQUEST_NOT_ALLOWED;
+	}
+
+	return result;
+}
 
 void FS_Mode_PushQueue(FS_Mode_Event_t event)
 {
@@ -140,6 +203,50 @@ bool FS_Mode_QueueEmpty(void)
 	empty = (queue_write == queue_read);
 	__set_PRIMASK(primask_bit);
 	return empty;
+}
+
+FS_Mode_RequestResult_t FS_Mode_RequestState(FS_Mode_State_t target_state)
+{
+	FS_Mode_RequestResult_t result;
+	uint32_t primask_bit = __get_PRIMASK();
+
+	__disable_irq();
+	result = FS_Mode_ValidateStateRequest(target_state);
+	if (result == FS_MODE_REQUEST_ACCEPTED)
+	{
+		requested_state = target_state;
+		button_state = BUTTON_IDLE;
+	}
+	__set_PRIMASK(primask_bit);
+
+	if (result == FS_MODE_REQUEST_ACCEPTED)
+	{
+		FS_Mode_PushQueue(FS_MODE_EVENT_REQUEST_STATE);
+	}
+
+	return result;
+}
+
+FS_Mode_RequestResult_t FS_Mode_RequestTerminalAction(FS_TerminalAction_t action)
+{
+	FS_Mode_RequestResult_t result;
+	uint32_t primask_bit = __get_PRIMASK();
+
+	__disable_irq();
+	result = FS_Mode_ValidateTerminalAction(action);
+	if (result == FS_MODE_REQUEST_ACCEPTED)
+	{
+		pending_terminal_action = action;
+		button_state = BUTTON_IDLE;
+	}
+	__set_PRIMASK(primask_bit);
+
+	if (result == FS_MODE_REQUEST_ACCEPTED)
+	{
+		FS_Mode_PushQueue(FS_MODE_EVENT_TERMINAL_ACTION);
+	}
+
+	return result;
 }
 
 static FS_Mode_State_t FS_Mode_State_Sleep(FS_Mode_Event_t event)
@@ -220,6 +327,10 @@ static FS_Mode_State_t FS_Mode_State_Sleep(FS_Mode_Event_t event)
 		FS_USBMode_Init();
 		next_mode = FS_MODE_STATE_USB;
 	}
+	else if (event == FS_MODE_EVENT_REQUEST_STATE)
+	{
+		next_mode = FS_Mode_EnterRequestedState();
+	}
 
 	return next_mode;
 }
@@ -241,6 +352,22 @@ static FS_Mode_State_t FS_Mode_State_Active(FS_Mode_Event_t event)
 		FS_ActiveMode_DeInit();
 		next_mode = FS_MODE_STATE_SLEEP;
 	}
+	else if (event == FS_MODE_EVENT_REQUEST_STATE)
+	{
+		if (requested_state == FS_MODE_STATE_SLEEP)
+		{
+			HW_TS_Stop(timer_id);
+			FS_ActiveMode_DeInit();
+			next_mode = FS_MODE_STATE_SLEEP;
+		}
+		FS_Mode_ClearRequestedState();
+	}
+	else if (event == FS_MODE_EVENT_TERMINAL_ACTION)
+	{
+		HW_TS_Stop(timer_id);
+		FS_ActiveMode_DeInit();
+		next_mode = FS_MODE_STATE_SLEEP;
+	}
 
 	return next_mode;
 }
@@ -259,6 +386,20 @@ static FS_Mode_State_t FS_Mode_State_Config(FS_Mode_Event_t event)
 		FS_ConfigMode_DeInit();
 		next_mode = FS_MODE_STATE_SLEEP;
 	}
+	else if (event == FS_MODE_EVENT_REQUEST_STATE)
+	{
+		if (requested_state == FS_MODE_STATE_SLEEP)
+		{
+			FS_ConfigMode_DeInit();
+			next_mode = FS_MODE_STATE_SLEEP;
+		}
+		FS_Mode_ClearRequestedState();
+	}
+	else if (event == FS_MODE_EVENT_TERMINAL_ACTION)
+	{
+		FS_ConfigMode_DeInit();
+		next_mode = FS_MODE_STATE_SLEEP;
+	}
 
 	return next_mode;
 }
@@ -271,6 +412,18 @@ static FS_Mode_State_t FS_Mode_State_USB(FS_Mode_Event_t event)
 	{
 		FS_USBMode_DeInit();
 		next_mode = FS_MODE_STATE_SLEEP;
+	}
+	else if (event == FS_MODE_EVENT_REQUEST_STATE)
+	{
+		APP_DBG_MSG("FS_Mode: mode request dropped in USB (target=%u)\n",
+				(unsigned int)requested_state);
+		FS_Mode_ClearRequestedState();
+	}
+	else if (event == FS_MODE_EVENT_TERMINAL_ACTION)
+	{
+		APP_DBG_MSG("FS_Mode: terminal action dropped in USB (action=%u)\n",
+				(unsigned int)pending_terminal_action);
+		pending_terminal_action = FS_TERMINAL_ACTION_NONE;
 	}
 
 	return next_mode;
@@ -286,6 +439,20 @@ static FS_Mode_State_t FS_Mode_State_Pairing(FS_Mode_Event_t event)
 		next_mode = FS_MODE_STATE_SLEEP;
 	}
 	else if (event == FS_MODE_EVENT_FORCE_UPDATE)
+	{
+		FS_PairingMode_DeInit();
+		next_mode = FS_MODE_STATE_SLEEP;
+	}
+	else if (event == FS_MODE_EVENT_REQUEST_STATE)
+	{
+		if (requested_state == FS_MODE_STATE_SLEEP)
+		{
+			FS_PairingMode_DeInit();
+			next_mode = FS_MODE_STATE_SLEEP;
+		}
+		FS_Mode_ClearRequestedState();
+	}
+	else if (event == FS_MODE_EVENT_TERMINAL_ACTION)
 	{
 		FS_PairingMode_DeInit();
 		next_mode = FS_MODE_STATE_SLEEP;
@@ -311,8 +478,102 @@ static FS_Mode_State_t FS_Mode_State_Start(FS_Mode_Event_t event)
 		FS_StartMode_DeInit();
 		next_mode = FS_MODE_STATE_SLEEP;
 	}
+	else if (event == FS_MODE_EVENT_REQUEST_STATE)
+	{
+		if (requested_state == FS_MODE_STATE_SLEEP)
+		{
+			HW_TS_Stop(timer_id);
+			FS_StartMode_DeInit();
+			next_mode = FS_MODE_STATE_SLEEP;
+		}
+		FS_Mode_ClearRequestedState();
+	}
+	else if (event == FS_MODE_EVENT_TERMINAL_ACTION)
+	{
+		HW_TS_Stop(timer_id);
+		FS_StartMode_DeInit();
+		next_mode = FS_MODE_STATE_SLEEP;
+	}
 
 	return next_mode;
+}
+
+static FS_Mode_State_t FS_Mode_EnterRequestedState(void)
+{
+	FS_Mode_State_t next_mode = FS_MODE_STATE_SLEEP;
+	FS_Mode_State_t target_state = requested_state;
+
+	FS_Mode_ClearRequestedState();
+	HW_TS_Stop(timer_id);
+	button_state = BUTTON_IDLE;
+
+	switch (target_state)
+	{
+	case FS_MODE_STATE_SLEEP:
+		next_mode = FS_MODE_STATE_SLEEP;
+		break;
+
+	case FS_MODE_STATE_ACTIVE:
+		FS_ActiveMode_Init();
+		next_mode = FS_MODE_STATE_ACTIVE;
+		break;
+
+	case FS_MODE_STATE_CONFIG:
+		FS_ConfigMode_Init();
+		next_mode = FS_MODE_STATE_CONFIG;
+		break;
+
+	case FS_MODE_STATE_PAIRING:
+		FS_PairingMode_Init();
+		next_mode = FS_MODE_STATE_PAIRING;
+		break;
+
+	case FS_MODE_STATE_START:
+		FS_StartMode_Init();
+		next_mode = FS_MODE_STATE_START;
+		break;
+
+	default:
+		next_mode = FS_MODE_STATE_SLEEP;
+		break;
+	}
+
+	return next_mode;
+}
+
+static void FS_Mode_ClearRequestedState(void)
+{
+	requested_state = FS_MODE_STATE_COUNT;
+}
+
+static void FS_Mode_ExecutePendingTerminalAction(void)
+{
+	FS_TerminalAction_t action = pending_terminal_action;
+
+	pending_terminal_action = FS_TERMINAL_ACTION_NONE;
+	FS_Mode_ExecuteTerminalAction(action);
+}
+
+static void FS_Mode_ExecuteTerminalAction(FS_TerminalAction_t action)
+{
+	__disable_irq();
+
+	if (action == FS_TERMINAL_ACTION_INSTALL_UPLOADED_FIRMWARE)
+	{
+		STANDALONE_LOADER_STATE = STANDALONE_LOADER_DWL_REQ;
+	}
+	else
+	{
+		STANDALONE_LOADER_STATE = STANDALONE_LOADER_NO_REQ;
+	}
+
+	__DSB();
+	__ISB();
+	NVIC_SystemReset();
+
+	while (1)
+	{
+	}
 }
 
 static void FS_Mode_Update(void)
@@ -331,6 +592,12 @@ static void FS_Mode_Update(void)
 
             /* Notify BLE about the updated mode (cast enum -> 1-byte) */
             Custom_Mode_Update((uint8_t) nextMode);
+        }
+
+        if ((pending_terminal_action != FS_TERMINAL_ACTION_NONE) &&
+            (mode_state == FS_MODE_STATE_SLEEP))
+        {
+            FS_Mode_ExecutePendingTerminalAction();
         }
     }
 }
