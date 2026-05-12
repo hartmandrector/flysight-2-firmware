@@ -182,6 +182,7 @@ typedef enum {
 #define SD_CMD_READ_SINGLE_BLOCK      17  /* CMD17 = 0x51 */
 #define SD_CMD_READ_MULT_BLOCK        18  /* CMD18 = 0x52 */
 #define SD_CMD_SET_BLOCK_COUNT        23  /* CMD23 = 0x57 */
+#define SD_ACMD_SET_WR_BLK_ERASE_COUNT 23 /* ACMD23 = 0x57 after CMD55 */
 #define SD_CMD_WRITE_SINGLE_BLOCK     24  /* CMD24 = 0x58 */
 #define SD_CMD_WRITE_MULT_BLOCK       25  /* CMD25 = 0x59 */
 #define SD_CMD_PROG_CSD               27  /* CMD27 = 0x5B */
@@ -274,6 +275,7 @@ static uint8_t SD_GetCSDRegister(SD_CSD* Csd);
 static uint8_t SD_GetDataResponse(void);
 static uint8_t SD_GoIdleState(void);
 static uint8_t SD_EnableHighSpeedMode(void);
+static uint8_t SD_SetPreEraseBlockCount(uint32_t BlockCount);
 static uint8_t SD_ReadSwitchStatus(uint32_t Arg, uint8_t *Status);
 static SD_CmdAnswer_typedef SD_SendCmd(uint8_t Cmd, uint32_t Arg, uint8_t Crc, uint8_t Answer);
 static uint8_t SD_WaitData(uint8_t data);
@@ -506,6 +508,8 @@ uint8_t BSP_SD_WriteBlocks(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBl
   else
   {
     /* === Multi-block write with CMD25 === */
+    (void)SD_SetPreEraseBlockCount(NumOfBlocks);
+
     response = SD_SendCmd(SD_CMD_WRITE_MULT_BLOCK, addr, 0xFF, SD_ANSWER_R1_EXPECTED);
     if (response.r1 != SD_R1_NO_ERROR)
     {
@@ -1000,6 +1004,36 @@ uint8_t SD_GetDataResponse(void)
 
   /* Return response */
   return rvalue;
+}
+
+/**
+  * @brief  Provides an SD ACMD23 pre-erase hint before a multi-block write.
+  * @param  BlockCount: Number of 512-byte blocks about to be written.
+  * @retval SD status
+  */
+static uint8_t SD_SetPreEraseBlockCount(uint32_t BlockCount)
+{
+  SD_CmdAnswer_typedef response;
+
+  /* ACMD23 is an optimization hint. Some cards do not support it, so callers
+     should ignore failure and continue with the write. */
+  response = SD_SendCmd(SD_CMD_APP_CMD, 0x00000000, 0xFF, SD_ANSWER_R1_EXPECTED);
+  SD_IO_CSState(1);
+  SD_IO_WriteByte(SD_DUMMY_BYTE);
+  if (response.r1 != SD_R1_NO_ERROR)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  response = SD_SendCmd(SD_ACMD_SET_WR_BLK_ERASE_COUNT, BlockCount, 0xFF, SD_ANSWER_R1_EXPECTED);
+  SD_IO_CSState(1);
+  SD_IO_WriteByte(SD_DUMMY_BYTE);
+  if (response.r1 != SD_R1_NO_ERROR)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  return BSP_SD_OK;
 }
 
 
