@@ -28,8 +28,6 @@ EndBSPDependencies */
 #include "usbd_msc.h"
 #include "usbd_msc_data.h"
 
-extern int8_t USBD_FlushStorageCache(void);
-
 
 /** @addtogroup STM32_USB_DEVICE_LIBRARY
   * @{
@@ -90,6 +88,7 @@ static int8_t SCSI_AllowPreventRemovable(USBD_HandleTypeDef *pdev, uint8_t lun, 
 static int8_t SCSI_ModeSense6(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_ModeSense10(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_SynchronizeCache(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
+static int8_t SCSI_SynchronizeStorage(USBD_HandleTypeDef *pdev, uint8_t lun);
 static int8_t SCSI_Write10(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_Write12(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_Read10(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
@@ -647,7 +646,7 @@ static int8_t SCSI_StartStopUnit(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t 
     return -1;
   }
 
-  if (((params[4] & 0x1U) == 0U) && (USBD_FlushStorageCache() < 0))
+  if (((params[4] & 0x1U) == 0U) && (SCSI_SynchronizeStorage(pdev, lun) < 0))
   {
     SCSI_SenseCode(pdev, lun, HARDWARE_ERROR, WRITE_FAULT);
     return -1;
@@ -709,7 +708,7 @@ static int8_t SCSI_SynchronizeCache(USBD_HandleTypeDef *pdev, uint8_t lun, uint8
     return -1;
   }
 
-  if (USBD_FlushStorageCache() < 0)
+  if (SCSI_SynchronizeStorage(pdev, lun) < 0)
   {
     SCSI_SenseCode(pdev, lun, HARDWARE_ERROR, WRITE_FAULT);
     return -1;
@@ -718,6 +717,24 @@ static int8_t SCSI_SynchronizeCache(USBD_HandleTypeDef *pdev, uint8_t lun, uint8
   hmsc->bot_data_length = 0U;
 
   return 0;
+}
+
+/**
+  * @brief  SCSI_SynchronizeStorage
+  *         Calls the optional storage sync callback.
+  * @param  lun: Logical unit number
+  * @retval status
+  */
+static int8_t SCSI_SynchronizeStorage(USBD_HandleTypeDef *pdev, uint8_t lun)
+{
+  USBD_StorageTypeDef *storage = (USBD_StorageTypeDef *)pdev->pUserData[pdev->classId];
+
+  if ((storage == NULL) || (storage->Sync == NULL))
+  {
+    return 0;
+  }
+
+  return storage->Sync(lun);
 }
 
 

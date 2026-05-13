@@ -21,77 +21,23 @@
 **  Website: http://flysight.ca/                                          **
 ****************************************************************************/
 
-#include "main.h"
-#include "app_common.h"
-#include "resource_manager.h"
-#include "state.h"
-#include "usb_control.h"
-#include "usb_device.h"
-#include "usbd_core.h"
-#include "usbd_storage_if.h"
+#ifndef SCRATCH_BUFFER_H_
+#define SCRATCH_BUFFER_H_
 
-extern USBD_HandleTypeDef hUsbDeviceFS;
-extern UART_HandleTypeDef huart1;
+#include <stdint.h>
 
-void FS_USBMode_Init(void)
+#define FS_SCRATCH_BUFFER_SIZE 32768U
+
+typedef enum
 {
-	/* Initialize microSD */
-	FS_ResourceManager_RequestResource(FS_RESOURCE_MICROSD);
+	FS_SCRATCH_BUFFER_OWNER_NONE = 0,
+	FS_SCRATCH_BUFFER_OWNER_SENSOR_BATCH,
+	FS_SCRATCH_BUFFER_OWNER_USB_STORAGE_CACHE
+} FS_ScratchBufferOwner_t;
 
-	/* Initialize controller */
-	FS_USBControl_Init();
+uint8_t *FS_ScratchBuffer_Acquire(FS_ScratchBufferOwner_t owner);
+void FS_ScratchBuffer_Release(FS_ScratchBufferOwner_t owner);
+uint8_t *FS_ScratchBuffer_Get(void);
+FS_ScratchBufferOwner_t FS_ScratchBuffer_GetOwner(void);
 
-	/* Algorithm to use USB on CPU1 comes from AN5289 Figure 9 */
-
-	/* Configure peripheral clocks */
-	PeriphClock_Config();
-
-	/* Enable USB interface */
-	MX_USB_Device_Init();
-}
-
-void FS_USBMode_DeInit(void)
-{
-	/* Flush any deferred USB mass-storage writes before shutting down. */
-	if (USBD_SyncStorage() < 0)
-	{
-		Error_Handler();
-	}
-
-	/* Disable controller */
-	FS_USBControl_DeInit();
-
-	/* Algorithm to use USB on CPU1 comes from AN5289 Figure 9 */
-
-	/* Disable USB interface */
-	if (USBD_DeInit(&hUsbDeviceFS) != USBD_OK)
-	{
-		Error_Handler();
-	}
-
-	if (USBD_DeInitStorage() < 0)
-	{
-		Error_Handler();
-	}
-
-	/* Disable USB power */
-	HAL_PWREx_DisableVddUSB();
-
-	/* Get Sem0 */
-	LL_HSEM_1StepLock(HSEM, CFG_HW_RNG_SEMID);
-
-	/* Disable HSI48 */
-	LL_RCC_HSI48_Disable();
-
-	/* Release Sem0 */
-	LL_HSEM_ReleaseLock(HSEM, CFG_HW_RNG_SEMID, 0);
-
-	/* Release HSI48 semaphore */
-	LL_HSEM_ReleaseLock(HSEM, CFG_HW_CLK48_CONFIG_SEMID, 0);
-
-	/* De-initialize microSD */
-	FS_ResourceManager_ReleaseResource(FS_RESOURCE_MICROSD);
-
-	/* Update persistent state */
-	FS_State_Update();
-}
+#endif /* SCRATCH_BUFFER_H_ */

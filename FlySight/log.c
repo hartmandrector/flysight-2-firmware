@@ -23,6 +23,8 @@
 
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "main.h"
 #include "app_common.h"
@@ -30,6 +32,7 @@
 #include "config.h"
 #include "ff.h"
 #include "log.h"
+#include "scratch_buffer.h"
 #include "state.h"
 #include "stm32_seq.h"
 #include "rtc_util.h"
@@ -158,12 +161,33 @@ typedef enum
 
 static FS_Log_State_t logState = LOG_STATE_UNINITIALIZED;
 
-#define SENSOR_BATCH_MAX_SIZE FS_SHARED_BUFFER_SIZE
-#define sensorBatchBuf ((char *) FS_Common_GetSharedBuffer())
+#define SENSOR_BATCH_MAX_SIZE FS_SCRATCH_BUFFER_SIZE
+#define sensorBatchBuf ((char *) FS_ScratchBuffer_Get())
 
 static uint32_t sensorBatchTargetLen = 0;
 static uint32_t sensorBatchLen = 0;
 static bool sensorSyncPending = false;
+static bool sensorBatchBufferAcquired = false;
+
+static bool FS_Log_AcquireSensorBatchBuffer(void)
+{
+	if (FS_ScratchBuffer_Acquire(FS_SCRATCH_BUFFER_OWNER_SENSOR_BATCH) == 0)
+	{
+		return false;
+	}
+
+	sensorBatchBufferAcquired = true;
+	return true;
+}
+
+static void FS_Log_ReleaseSensorBatchBuffer(void)
+{
+	if (sensorBatchBufferAcquired)
+	{
+		FS_ScratchBuffer_Release(FS_SCRATCH_BUFFER_OWNER_SENSOR_BATCH);
+		sensorBatchBufferAcquired = false;
+	}
+}
 
 static void FS_Log_FlushFullSensorBatch(void)
 {
@@ -788,6 +812,7 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 
 	// Save enable flags
 	enable_flags = flags;
+	sensorBatchBufferAcquired = false;
 
 	// Reset state
 	baroRdI = 0;
@@ -923,6 +948,13 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 			return HAL_ERROR;
 		}
 
+		if (!FS_Log_AcquireSensorBatchBuffer())
+		{
+			f_close(&sensorFile);
+			logState = LOG_STATE_FAILED;
+			return HAL_ERROR;
+		}
+
 		FS_Log_WriteSensorHeader();
 	}
 
@@ -932,6 +964,7 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 		sprintf(path, "/temp/%04lu/event.csv", temp_folder);
 		if (f_open(&eventFile, path, FA_WRITE|FA_CREATE_ALWAYS) != FR_OK)
 		{
+			FS_Log_ReleaseSensorBatchBuffer();
 			logState = LOG_STATE_FAILED;
 			return HAL_ERROR;
 		}
@@ -1007,6 +1040,7 @@ void FS_Log_DeInit(uint32_t temp_folder)
 	{
 		FS_Log_FlushFinalSensorBatch();
 		f_close(&sensorFile);
+		FS_Log_ReleaseSensorBatchBuffer();
 	}
 	if (enable_flags & FS_LOG_ENABLE_EVENT)
 	{

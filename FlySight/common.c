@@ -29,13 +29,6 @@
 
 extern RNG_HandleTypeDef hrng;
 
-static uint32_t sharedBuffer[FS_SHARED_BUFFER_SIZE / sizeof(uint32_t)];
-
-uint8_t *FS_Common_GetSharedBuffer(void)
-{
-	return (uint8_t *) sharedBuffer;
-}
-
 char *writeInt32ToBuf(char *ptr, int32_t val, int8_t dec, int8_t dot, char delimiter)
 {
     int32_t value = val > 0 ? val : -val;
