@@ -27,6 +27,9 @@
 #include "usbd_storage_if.h"
 
 /* USER CODE BEGIN INCLUDE */
+#include <string.h>
+
+#include "common.h"
 #include "stm32_adafruit_sd.h"
 /* USER CODE END INCLUDE */
 
@@ -56,6 +59,12 @@ void (*endActivityCallback)(void) = 0;
   */
 
 /* USER CODE BEGIN PRIVATE_TYPES */
+typedef enum
+{
+  USB_STORAGE_CACHE_INVALID = 0,
+  USB_STORAGE_CACHE_READ,
+  USB_STORAGE_CACHE_WRITE
+} USB_StorageCacheMode_t;
 
 /* USER CODE END PRIVATE_TYPES */
 
@@ -73,6 +82,8 @@ void (*endActivityCallback)(void) = 0;
 #define STORAGE_BLK_SIZ                  0x200
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
+#define STORAGE_CACHE_BLK_NBR          (FS_SHARED_BUFFER_SIZE / STORAGE_BLK_SIZ)
+#define STORAGE_WAIT_TIMEOUT           100000U
 
 /* USER CODE END PRIVATE_DEFINES */
 
@@ -119,6 +130,11 @@ const int8_t STORAGE_Inquirydata_FS[] = {/* 36 */
 /* USER CODE END INQUIRY_DATA_FS */
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
+static USB_StorageCacheMode_t storageCacheMode = USB_STORAGE_CACHE_INVALID;
+static uint32_t storageCacheBaseBlock = 0;
+static uint16_t storageCacheBlockCount = 0;
+static uint64_t storageCacheDirtyMask = 0;
+static uint32_t storageCacheTotalBlocks = 0;
 
 /* USER CODE END PRIVATE_VARIABLES */
 
@@ -155,6 +171,15 @@ static int8_t STORAGE_Write_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uin
 static int8_t STORAGE_GetMaxLun_FS(void);
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_DECLARATION */
+static uint64_t STORAGE_CacheBlockMask(uint16_t block_count);
+static void STORAGE_ResetCache(void);
+static int8_t STORAGE_EnsureCapacity(void);
+static int8_t STORAGE_WaitCardReady(void);
+static int8_t STORAGE_ReadBlocks(uint8_t *buf, uint32_t blk_addr, uint16_t blk_len);
+static int8_t STORAGE_WriteBlocks(uint8_t *buf, uint32_t blk_addr, uint16_t blk_len);
+static int8_t STORAGE_FlushCache(void);
+static int8_t STORAGE_LoadReadCache(uint32_t blk_addr);
+static int8_t STORAGE_EnsureWriteCache(uint32_t blk_addr);
 
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
 
@@ -183,7 +208,15 @@ USBD_StorageTypeDef USBD_Storage_Interface_fops_FS =
 int8_t STORAGE_Init_FS(uint8_t lun)
 {
   /* USER CODE BEGIN 2 */
-  BSP_SD_Init();
+  if (BSP_SD_Init() != BSP_SD_OK)
+  {
+    return (USBD_FAIL);
+  }
+  if (STORAGE_FlushCache() < 0)
+  {
+    return (USBD_FAIL);
+  }
+  STORAGE_ResetCache();
   return (USBD_OK);
   /* USER CODE END 2 */
 }
@@ -205,9 +238,12 @@ int8_t STORAGE_GetCapacity_FS(uint8_t lun, uint32_t *block_num, uint16_t *block_
   {
 	ret = -1;
   }
-
-  *block_num = info.LogBlockNbr;
-  *block_size = info.LogBlockSize;
+  else
+  {
+    storageCacheTotalBlocks = info.LogBlockNbr;
+    *block_num = info.LogBlockNbr;
+    *block_size = info.LogBlockSize;
+  }
 
   return ret;
   /* USER CODE END 3 */
@@ -258,23 +294,46 @@ int8_t STORAGE_IsWriteProtected_FS(uint8_t lun)
 int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t blk_len)
 {
   /* USER CODE BEGIN 6 */
-  int8_t ret = -1;
-  uint32_t timeout = 100000;
+  uint16_t blocksLeft = blk_len;
 
-  if (beginActivityCallback) beginActivityCallback();
-  BSP_SD_ReadBlocks((uint32_t *)buf, blk_addr, blk_len, SD_DATATIMEOUT);
-  if (endActivityCallback) endActivityCallback();
+  UNUSED(lun);
 
-  while(BSP_SD_GetCardState() != BSP_SD_OK)
+  if (STORAGE_EnsureCapacity() < 0)
   {
-	if (timeout-- == 0)
-	{
-	  return ret;
-	}
+    return -1;
   }
-  ret = 0;
 
-  return ret;
+  while (blocksLeft > 0U)
+  {
+    uint32_t offset;
+    uint16_t chunkBlocks;
+
+    if (STORAGE_LoadReadCache(blk_addr) < 0)
+    {
+      return -1;
+    }
+
+    offset = blk_addr - storageCacheBaseBlock;
+    if (offset >= storageCacheBlockCount)
+    {
+      return -1;
+    }
+
+    chunkBlocks = (uint16_t) (storageCacheBlockCount - offset);
+    if (chunkBlocks > blocksLeft)
+    {
+      chunkBlocks = blocksLeft;
+    }
+
+    memcpy(buf, FS_Common_GetSharedBuffer() + (offset * STORAGE_BLK_SIZ),
+           chunkBlocks * STORAGE_BLK_SIZ);
+
+    buf += chunkBlocks * STORAGE_BLK_SIZ;
+    blk_addr += chunkBlocks;
+    blocksLeft -= chunkBlocks;
+  }
+
+  return 0;
   /* USER CODE END 6 */
 }
 
@@ -286,23 +345,59 @@ int8_t STORAGE_Read_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t bl
 int8_t STORAGE_Write_FS(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t blk_len)
 {
   /* USER CODE BEGIN 7 */
-  int8_t ret = -1;
-  uint32_t timeout = 100000;
+  uint16_t blocksLeft = blk_len;
 
-  if (beginActivityCallback) beginActivityCallback();
-  BSP_SD_WriteBlocks((uint32_t *)buf, blk_addr, blk_len, SD_DATATIMEOUT);
-  if (endActivityCallback) endActivityCallback();
+  UNUSED(lun);
 
-  while(BSP_SD_GetCardState() != BSP_SD_OK)
+  if (STORAGE_EnsureCapacity() < 0)
   {
-	if (timeout-- == 0)
-	{
-	  return ret;
-	}
+    return -1;
   }
-  ret = 0;
 
-  return ret;
+  while (blocksLeft > 0U)
+  {
+    uint32_t offset;
+    uint16_t chunkBlocks;
+
+    if (STORAGE_EnsureWriteCache(blk_addr) < 0)
+    {
+      return -1;
+    }
+
+    offset = blk_addr - storageCacheBaseBlock;
+    if (offset >= storageCacheBlockCount)
+    {
+      return -1;
+    }
+
+    chunkBlocks = (uint16_t) (storageCacheBlockCount - offset);
+    if (chunkBlocks > blocksLeft)
+    {
+      chunkBlocks = blocksLeft;
+    }
+
+    memcpy(FS_Common_GetSharedBuffer() + (offset * STORAGE_BLK_SIZ), buf,
+           chunkBlocks * STORAGE_BLK_SIZ);
+
+    for (uint16_t i = 0; i < chunkBlocks; ++i)
+    {
+      storageCacheDirtyMask |= 1ULL << (offset + i);
+    }
+
+    if (storageCacheDirtyMask == STORAGE_CacheBlockMask(storageCacheBlockCount))
+    {
+      if (STORAGE_FlushCache() < 0)
+      {
+        return -1;
+      }
+    }
+
+    buf += chunkBlocks * STORAGE_BLK_SIZ;
+    blk_addr += chunkBlocks;
+    blocksLeft -= chunkBlocks;
+  }
+
+  return 0;
   /* USER CODE END 7 */
 }
 
@@ -319,6 +414,248 @@ int8_t STORAGE_GetMaxLun_FS(void)
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
+static uint64_t STORAGE_CacheBlockMask(uint16_t block_count)
+{
+  if (block_count >= STORAGE_CACHE_BLK_NBR)
+  {
+    return UINT64_MAX;
+  }
+
+  return (1ULL << block_count) - 1ULL;
+}
+
+static uint32_t STORAGE_CacheBaseBlock(uint32_t blk_addr)
+{
+  return blk_addr - (blk_addr % STORAGE_CACHE_BLK_NBR);
+}
+
+static uint16_t STORAGE_CacheBlockCount(uint32_t baseBlock)
+{
+  uint32_t remainingBlocks;
+
+  if (baseBlock >= storageCacheTotalBlocks)
+  {
+    return 0;
+  }
+
+  remainingBlocks = storageCacheTotalBlocks - baseBlock;
+
+  if (remainingBlocks > STORAGE_CACHE_BLK_NBR)
+  {
+    remainingBlocks = STORAGE_CACHE_BLK_NBR;
+  }
+
+  return (uint16_t) remainingBlocks;
+}
+
+static void STORAGE_ResetCache(void)
+{
+  storageCacheMode = USB_STORAGE_CACHE_INVALID;
+  storageCacheBaseBlock = 0;
+  storageCacheBlockCount = 0;
+  storageCacheDirtyMask = 0;
+  storageCacheTotalBlocks = 0;
+}
+
+static int8_t STORAGE_EnsureCapacity(void)
+{
+  SD_CardInfo info;
+
+  if (storageCacheTotalBlocks != 0U)
+  {
+    return 0;
+  }
+
+  if (BSP_SD_GetCardInfo(&info) != BSP_SD_OK)
+  {
+    return -1;
+  }
+
+  storageCacheTotalBlocks = info.LogBlockNbr;
+
+  return 0;
+}
+
+static int8_t STORAGE_WaitCardReady(void)
+{
+  uint32_t timeout = STORAGE_WAIT_TIMEOUT;
+
+  while (BSP_SD_GetCardState() != BSP_SD_OK)
+  {
+    if (timeout-- == 0U)
+    {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+static int8_t STORAGE_ReadBlocks(uint8_t *buf, uint32_t blk_addr, uint16_t blk_len)
+{
+  uint8_t res;
+
+  if (blk_len == 0U)
+  {
+    return 0;
+  }
+
+  if (beginActivityCallback) beginActivityCallback();
+  res = BSP_SD_ReadBlocks((uint32_t *) buf, blk_addr, blk_len, SD_DATATIMEOUT);
+  if (endActivityCallback) endActivityCallback();
+
+  if (res != BSP_SD_OK)
+  {
+    return -1;
+  }
+
+  return STORAGE_WaitCardReady();
+}
+
+static int8_t STORAGE_WriteBlocks(uint8_t *buf, uint32_t blk_addr, uint16_t blk_len)
+{
+  uint8_t res;
+
+  if (blk_len == 0U)
+  {
+    return 0;
+  }
+
+  if (beginActivityCallback) beginActivityCallback();
+  res = BSP_SD_WriteBlocks((uint32_t *) buf, blk_addr, blk_len, SD_DATATIMEOUT);
+  if (endActivityCallback) endActivityCallback();
+
+  if (res != BSP_SD_OK)
+  {
+    return -1;
+  }
+
+  return STORAGE_WaitCardReady();
+}
+
+static int8_t STORAGE_FlushCache(void)
+{
+  uint8_t *cache = FS_Common_GetSharedBuffer();
+  uint16_t block = 0;
+
+  if ((storageCacheMode != USB_STORAGE_CACHE_WRITE) || (storageCacheDirtyMask == 0U))
+  {
+    return 0;
+  }
+
+  while (block < storageCacheBlockCount)
+  {
+    uint16_t startBlock;
+    uint16_t blockCount;
+
+    while ((block < storageCacheBlockCount)
+        && ((storageCacheDirtyMask & (1ULL << block)) == 0U))
+    {
+      ++block;
+    }
+
+    startBlock = block;
+
+    while ((block < storageCacheBlockCount)
+        && ((storageCacheDirtyMask & (1ULL << block)) != 0U))
+    {
+      ++block;
+    }
+
+    blockCount = block - startBlock;
+    if (blockCount == 0U)
+    {
+      continue;
+    }
+
+    if (STORAGE_WriteBlocks(cache + (startBlock * STORAGE_BLK_SIZ),
+                            storageCacheBaseBlock + startBlock,
+                            blockCount) < 0)
+    {
+      return -1;
+    }
+
+    for (uint16_t i = 0; i < blockCount; ++i)
+    {
+      storageCacheDirtyMask &= ~(1ULL << (startBlock + i));
+    }
+  }
+
+  return 0;
+}
+
+static int8_t STORAGE_LoadReadCache(uint32_t blk_addr)
+{
+  uint32_t baseBlock = STORAGE_CacheBaseBlock(blk_addr);
+
+  if ((storageCacheMode == USB_STORAGE_CACHE_READ)
+      && (storageCacheBaseBlock == baseBlock))
+  {
+    return 0;
+  }
+
+  if (STORAGE_FlushCache() < 0)
+  {
+    return -1;
+  }
+
+  storageCacheMode = USB_STORAGE_CACHE_INVALID;
+  storageCacheBaseBlock = baseBlock;
+  storageCacheBlockCount = STORAGE_CacheBlockCount(baseBlock);
+  storageCacheDirtyMask = 0;
+
+  if (storageCacheBlockCount == 0U)
+  {
+    return -1;
+  }
+
+  if (STORAGE_ReadBlocks(FS_Common_GetSharedBuffer(),
+                         storageCacheBaseBlock,
+                         storageCacheBlockCount) < 0)
+  {
+    STORAGE_ResetCache();
+    return -1;
+  }
+
+  storageCacheMode = USB_STORAGE_CACHE_READ;
+
+  return 0;
+}
+
+static int8_t STORAGE_EnsureWriteCache(uint32_t blk_addr)
+{
+  uint32_t baseBlock = STORAGE_CacheBaseBlock(blk_addr);
+
+  if ((storageCacheMode == USB_STORAGE_CACHE_WRITE)
+      && (storageCacheBaseBlock == baseBlock))
+  {
+    return 0;
+  }
+
+  if (STORAGE_FlushCache() < 0)
+  {
+    return -1;
+  }
+
+  storageCacheMode = USB_STORAGE_CACHE_WRITE;
+  storageCacheBaseBlock = baseBlock;
+  storageCacheBlockCount = STORAGE_CacheBlockCount(baseBlock);
+  storageCacheDirtyMask = 0;
+
+  if (storageCacheBlockCount == 0U)
+  {
+    STORAGE_ResetCache();
+    return -1;
+  }
+
+  return 0;
+}
+
+int8_t USBD_FlushStorageCache(void)
+{
+  return STORAGE_FlushCache();
+}
+
 void USBD_SetActivityCallbacks(void (*begin)(void), void (*end)(void))
 {
   beginActivityCallback = begin;

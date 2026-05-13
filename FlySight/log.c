@@ -158,9 +158,9 @@ typedef enum
 
 static FS_Log_State_t logState = LOG_STATE_UNINITIALIZED;
 
-#define SENSOR_BATCH_MAX_SIZE 32768
+#define SENSOR_BATCH_MAX_SIZE FS_SHARED_BUFFER_SIZE
+#define sensorBatchBuf ((char *) FS_Common_GetSharedBuffer())
 
-static char sensorBatchBuf[SENSOR_BATCH_MAX_SIZE];
 static uint32_t sensorBatchTargetLen = 0;
 static uint32_t sensorBatchLen = 0;
 static bool sensorSyncPending = false;

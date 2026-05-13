@@ -28,6 +28,8 @@ EndBSPDependencies */
 #include "usbd_msc.h"
 #include "usbd_msc_data.h"
 
+extern int8_t USBD_FlushStorageCache(void);
+
 
 /** @addtogroup STM32_USB_DEVICE_LIBRARY
   * @{
@@ -87,6 +89,7 @@ static int8_t SCSI_StartStopUnit(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t 
 static int8_t SCSI_AllowPreventRemovable(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_ModeSense6(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_ModeSense10(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
+static int8_t SCSI_SynchronizeCache(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_Write10(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_Write12(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
 static int8_t SCSI_Read10(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params);
@@ -188,6 +191,11 @@ int8_t SCSI_ProcessCmd(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *cmd)
 
     case SCSI_VERIFY10:
       ret = SCSI_Verify10(pdev, lun, cmd);
+      break;
+
+    case SCSI_SYNCHRONIZE_CACHE10:
+    case SCSI_SYNCHRONIZE_CACHE16:
+      ret = SCSI_SynchronizeCache(pdev, lun, cmd);
       break;
 
     default:
@@ -625,7 +633,6 @@ void SCSI_SenseCode(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t sKey, uint8_t
   */
 static int8_t SCSI_StartStopUnit(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params)
 {
-  UNUSED(lun);
   USBD_MSC_BOT_HandleTypeDef *hmsc = (USBD_MSC_BOT_HandleTypeDef *)pdev->pClassDataCmsit[pdev->classId];
 
   if (hmsc == NULL)
@@ -637,6 +644,12 @@ static int8_t SCSI_StartStopUnit(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t 
   {
     SCSI_SenseCode(pdev, lun, ILLEGAL_REQUEST, INVALID_FIELED_IN_COMMAND);
 
+    return -1;
+  }
+
+  if (((params[4] & 0x1U) == 0U) && (USBD_FlushStorageCache() < 0))
+  {
+    SCSI_SenseCode(pdev, lun, HARDWARE_ERROR, WRITE_FAULT);
     return -1;
   }
 
@@ -656,6 +669,52 @@ static int8_t SCSI_StartStopUnit(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t 
   {
     /* .. */
   }
+  hmsc->bot_data_length = 0U;
+
+  return 0;
+}
+
+/**
+  * @brief  SCSI_SynchronizeCache
+  *         Process Synchronize Cache command
+  * @param  lun: Logical unit number
+  * @param  params: Command parameters
+  * @retval status
+  */
+static int8_t SCSI_SynchronizeCache(USBD_HandleTypeDef *pdev, uint8_t lun, uint8_t *params)
+{
+  UNUSED(params);
+  USBD_MSC_BOT_HandleTypeDef *hmsc = (USBD_MSC_BOT_HandleTypeDef *)pdev->pClassDataCmsit[pdev->classId];
+
+  if (hmsc == NULL)
+  {
+    return -1;
+  }
+
+  if (hmsc->cbw.dDataLength != 0U)
+  {
+    SCSI_SenseCode(pdev, hmsc->cbw.bLUN, ILLEGAL_REQUEST, INVALID_CDB);
+    return -1;
+  }
+
+  if (hmsc->scsi_medium_state == SCSI_MEDIUM_EJECTED)
+  {
+    SCSI_SenseCode(pdev, lun, NOT_READY, MEDIUM_NOT_PRESENT);
+    return -1;
+  }
+
+  if (((USBD_StorageTypeDef *)pdev->pUserData[pdev->classId])->IsReady(lun) != 0)
+  {
+    SCSI_SenseCode(pdev, lun, NOT_READY, MEDIUM_NOT_PRESENT);
+    return -1;
+  }
+
+  if (USBD_FlushStorageCache() < 0)
+  {
+    SCSI_SenseCode(pdev, lun, HARDWARE_ERROR, WRITE_FAULT);
+    return -1;
+  }
+
   hmsc->bot_data_length = 0U;
 
   return 0;
