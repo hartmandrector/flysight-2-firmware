@@ -21,77 +21,42 @@
 **  Website: http://flysight.ca/                                          **
 ****************************************************************************/
 
-#include "main.h"
-#include "app_common.h"
-#include "resource_manager.h"
-#include "state.h"
-#include "usb_control.h"
-#include "usb_device.h"
-#include "usbd_core.h"
-#include "usbd_storage_if.h"
+#include "scratch_buffer.h"
 
-extern USBD_HandleTypeDef hUsbDeviceFS;
-extern UART_HandleTypeDef huart1;
+static uint32_t scratchBuffer[FS_SCRATCH_BUFFER_SIZE / sizeof(uint32_t)];
+static FS_ScratchBufferOwner_t scratchBufferOwner = FS_SCRATCH_BUFFER_OWNER_NONE;
 
-void FS_USBMode_Init(void)
+uint8_t *FS_ScratchBuffer_Acquire(FS_ScratchBufferOwner_t owner)
 {
-	/* Initialize microSD */
-	FS_ResourceManager_RequestResource(FS_RESOURCE_MICROSD);
+	if (owner == FS_SCRATCH_BUFFER_OWNER_NONE)
+	{
+		return 0;
+	}
 
-	/* Initialize controller */
-	FS_USBControl_Init();
+	if ((scratchBufferOwner != FS_SCRATCH_BUFFER_OWNER_NONE)
+			&& (scratchBufferOwner != owner))
+	{
+		return 0;
+	}
 
-	/* Algorithm to use USB on CPU1 comes from AN5289 Figure 9 */
-
-	/* Configure peripheral clocks */
-	PeriphClock_Config();
-
-	/* Enable USB interface */
-	MX_USB_Device_Init();
+	scratchBufferOwner = owner;
+	return (uint8_t *) scratchBuffer;
 }
 
-void FS_USBMode_DeInit(void)
+void FS_ScratchBuffer_Release(FS_ScratchBufferOwner_t owner)
 {
-	/* Flush any deferred USB mass-storage writes before shutting down. */
-	if (USBD_SyncStorage() < 0)
+	if (scratchBufferOwner == owner)
 	{
-		Error_Handler();
+		scratchBufferOwner = FS_SCRATCH_BUFFER_OWNER_NONE;
 	}
+}
 
-	/* Disable controller */
-	FS_USBControl_DeInit();
+uint8_t *FS_ScratchBuffer_Get(void)
+{
+	return (uint8_t *) scratchBuffer;
+}
 
-	/* Algorithm to use USB on CPU1 comes from AN5289 Figure 9 */
-
-	/* Disable USB interface */
-	if (USBD_DeInit(&hUsbDeviceFS) != USBD_OK)
-	{
-		Error_Handler();
-	}
-
-	if (USBD_DeInitStorage() < 0)
-	{
-		Error_Handler();
-	}
-
-	/* Disable USB power */
-	HAL_PWREx_DisableVddUSB();
-
-	/* Get Sem0 */
-	LL_HSEM_1StepLock(HSEM, CFG_HW_RNG_SEMID);
-
-	/* Disable HSI48 */
-	LL_RCC_HSI48_Disable();
-
-	/* Release Sem0 */
-	LL_HSEM_ReleaseLock(HSEM, CFG_HW_RNG_SEMID, 0);
-
-	/* Release HSI48 semaphore */
-	LL_HSEM_ReleaseLock(HSEM, CFG_HW_CLK48_CONFIG_SEMID, 0);
-
-	/* De-initialize microSD */
-	FS_ResourceManager_ReleaseResource(FS_RESOURCE_MICROSD);
-
-	/* Update persistent state */
-	FS_State_Update();
+FS_ScratchBufferOwner_t FS_ScratchBuffer_GetOwner(void)
+{
+	return scratchBufferOwner;
 }
