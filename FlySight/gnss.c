@@ -846,6 +846,66 @@ static void FS_GNSS_InitMessages(void)
 	#undef SEND_MESSAGE
 }
 
+HAL_StatusTypeDef FS_GNSS_SetDynamicModel(uint8_t model)
+{
+	const ubxCfgNav5_t cfgNav5 =
+	{
+		.mask       = 0x0001,   // Apply dynamic model settings only
+		.dynModel   = model
+	};
+
+	bool valid_model = (model == FS_CONFIG_MODEL_PORTABLE) ||
+				   (model == FS_CONFIG_MODEL_STATIONARY) ||
+				   (model == FS_CONFIG_MODEL_PEDESTRIAN) ||
+				   (model == FS_CONFIG_MODEL_AUTOMOTIVE) ||
+				   (model == FS_CONFIG_MODEL_SEA) ||
+				   (model == FS_CONFIG_MODEL_AIRBORNE_1G) ||
+				   (model == FS_CONFIG_MODEL_AIRBORNE_2G) ||
+				   (model == FS_CONFIG_MODEL_AIRBORNE_4G);
+
+	if (!valid_model)
+	{
+		return HAL_ERROR;
+	}
+
+	for (uint8_t attempt = 0; attempt < 3; ++attempt)
+	{
+		FS_GNSS_SendMessage(UBX_CFG, UBX_CFG_NAV5, sizeof(cfgNav5), &cfgNav5);
+		if (FS_GNSS_WaitForAck(UBX_CFG, UBX_CFG_NAV5, GNSS_TIMEOUT))
+		{
+			return HAL_OK;
+		}
+	}
+
+	return HAL_ERROR;
+}
+
+HAL_StatusTypeDef FS_GNSS_SetRateMs(uint16_t rate_ms)
+{
+	const ubxCfgRate_t cfgRate =
+	{
+		.measRate   = rate_ms,
+		.navRate    = 1,
+		.timeRef    = 0
+	};
+
+	if ((rate_ms < 40U) || (rate_ms > 1000U))
+	{
+		return HAL_ERROR;
+	}
+
+	for (uint8_t attempt = 0; attempt < 3; ++attempt)
+	{
+		FS_GNSS_SendMessage(UBX_CFG, UBX_CFG_RATE, sizeof(cfgRate), &cfgRate);
+		if (FS_GNSS_WaitForAck(UBX_CFG, UBX_CFG_RATE, GNSS_TIMEOUT))
+		{
+			return HAL_OK;
+		}
+	}
+
+	return HAL_ERROR;
+}
+
 void FS_GNSS_Init(void)
 {
 	const ubxCfgPrt_t cfgPrt =

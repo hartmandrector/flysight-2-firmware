@@ -25,6 +25,7 @@
 #define GNSS_H_
 
 #include <stdbool.h>
+#include "stm32wbxx_hal.h"
 
 #define GNSS_RX_BUF_LEN   2048  // Circular buffer for UART
 #define GNSS_RAW_BUF_LEN  512   // Circular buffer for raw output
@@ -98,5 +99,8 @@ void FS_GNSS_RawReady_SetCallback(void (*callback)(void));
 
 const FS_GNSS_Int_t *FS_GNSS_GetInt(void);
 void FS_GNSS_IntReady_SetCallback(void (*callback)(void));
+
+HAL_StatusTypeDef FS_GNSS_SetDynamicModel(uint8_t model);
+HAL_StatusTypeDef FS_GNSS_SetRateMs(uint16_t rate_ms);
 
 #endif /* GNSS_H_ */

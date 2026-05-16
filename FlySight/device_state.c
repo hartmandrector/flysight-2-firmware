@@ -33,7 +33,6 @@
 #include "mode.h"
 #include "version.h"    // For GIT_TAG
 #include "state.h"      // For FS_State_Get()->device_id
-#include "mode.h"       // For FS_Mode_PushQueue, FS_Mode_State
 #include "log.h"        // For FS_Log_SetExtSync
 #include "dbg_trace.h"
 
@@ -50,6 +49,7 @@
 #define DS_CMD_REQUEST_START   0x12 // Payload: (none)
 #define DS_CMD_REQUEST_CONFIG  0x13 // Payload: (none)
 #define DS_CMD_REQUEST_PAIRING 0x14 // Payload: (none)
+#define DS_CMD_SET_EXT_SYNC    0x15 // Payload: [ext_sync (uint32_t little-endian)]
 
 #define DS_RESPONSE_FALLBACK_MSEC 200
 #define DS_RESPONSE_FALLBACK_TICKS (DS_RESPONSE_FALLBACK_MSEC*1000/CFG_TS_TICK_VAL)
@@ -209,6 +209,19 @@ void DeviceState_Handle_DS_ControlPointWrite(const uint8_t *payload, uint8_t len
                     if (status == CP_STATUS_SUCCESS) {
                         request.kind = DS_PENDING_REQUEST_MODE;
                     }
+                }
+                break;
+
+            case DS_CMD_SET_EXT_SYNC:
+                if (params_len != 4) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    uint32_t ext_sync = (uint32_t) payload[1] |
+                                        ((uint32_t) payload[2] << 8) |
+                                        ((uint32_t) payload[3] << 16) |
+                                        ((uint32_t) payload[4] << 24);
+                    FS_Log_SetExtSync(ext_sync);
+                    status = CP_STATUS_SUCCESS;
                 }
                 break;
 

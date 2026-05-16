@@ -89,10 +89,10 @@ Deployment is the most data-critical phase for safety analysis:
 
 | Command | Code | Payload | Description |
 |---------|------|---------|-------------|
-| SET_GNSS_MODEL | 0x11 | model_id (0-8) | Switch dynModel at runtime via UBX-CFG-NAV5 |
-| SET_GNSS_RATE | 0x12 | rate_ms_lo, rate_ms_hi | Change measurement rate (40-1000 ms) |
-| SET_FLIGHT_PHASE | 0x13 | phase_id | Composite command: sets model + GPS rate + BLE dividers all at once |
-| GET_GNSS_STATUS | 0x14 | — | Returns: fix type, numSV, hAcc, vAcc, sAcc |
+| SET_GNSS_MODEL | 0x12 | model_id (0-8) | Switch dynModel at runtime via UBX-CFG-NAV5 |
+| SET_GNSS_RATE | 0x13 | rate_ms_lo, rate_ms_hi | Change measurement rate (40-1000 ms) |
+| SET_FLIGHT_PHASE | 0x14 | phase_id | Composite command: sets model + GPS rate + BLE dividers all at once |
+| GET_GNSS_STATUS | 0x15 | — | Returns: fix type, numSV, hAcc, vAcc, sAcc |
 
 `SET_FLIGHT_PHASE` is the main interface — the flight computer sends a single command and the firmware applies the full configuration table for that phase. Individual commands (`SET_GNSS_MODEL`, `SET_GNSS_RATE`) available for fine-grained control.
 

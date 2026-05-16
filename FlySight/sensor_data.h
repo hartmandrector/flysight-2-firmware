@@ -35,6 +35,10 @@
                                         // divider: 1-65535 (little-endian uint16_t, 0 reserved for auto)
 #define SD_CMD_GET_BLE_DIVIDER     0x11 // Payload: [sensor_id (1 byte)]
                                         // Response Data: [sensor_id (1 byte)] [divider_low (1 byte)] [divider_high (1 byte)]
+#define SD_CMD_SET_GNSS_MODEL      0x12 // Payload: [model (1 byte)]
+                                        // model: 0,2,3,4,5,6,7,8 (u-blox dynModel)
+#define SD_CMD_SET_GNSS_RATE       0x13 // Payload: [rate_low (1 byte)] [rate_high (1 byte)]
+                                        // rate: 40-1000 ms (little-endian uint16_t)
 
 // Fusion AHRS magnetometer calibration (runtime override)
 #define SD_CMD_SET_FUSION_MAG_HARD 0x20 // Payload: [x_lsb x_msb y_lsb y_msb z_lsb z_msb] (3 × int16_t milligauss, little-endian)

@@ -34,6 +34,7 @@
 #include "fusion_integration.h" // For Fusion calibration setters
 #include "ble_config.h"       // For validation and auto-calculation
 #include "config.h"           // For FS_Config_Get
+#include "gnss.h"             // For FS_GNSS_SetDynamicModel, FS_GNSS_SetRateMs
 #include "string.h"           // For memcpy
 #include "app_common.h"       // For APP_DBG_MSG (optional)
 #include "dbg_trace.h"
@@ -180,6 +181,46 @@ void SensorData_Handle_SD_ControlPointWrite(
                         response_data_buf[1] = divider & 0xFF;        // Low byte
                         response_data_buf[2] = (divider >> 8) & 0xFF; // High byte
                         response_data_len = 3;
+                    }
+                }
+                break;
+
+            case SD_CMD_SET_GNSS_MODEL:
+                if (params_len != 1) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    uint8_t model = params[0];
+                    bool valid_model = (model == FS_CONFIG_MODEL_PORTABLE) ||
+                                       (model == FS_CONFIG_MODEL_STATIONARY) ||
+                                       (model == FS_CONFIG_MODEL_PEDESTRIAN) ||
+                                       (model == FS_CONFIG_MODEL_AUTOMOTIVE) ||
+                                       (model == FS_CONFIG_MODEL_SEA) ||
+                                       (model == FS_CONFIG_MODEL_AIRBORNE_1G) ||
+                                       (model == FS_CONFIG_MODEL_AIRBORNE_2G) ||
+                                       (model == FS_CONFIG_MODEL_AIRBORNE_4G);
+
+                    if (!valid_model) {
+                        status = CP_STATUS_INVALID_PARAMETER;
+                    } else if (FS_GNSS_SetDynamicModel(model) != HAL_OK) {
+                        status = CP_STATUS_OPERATION_FAILED;
+                    } else {
+                        status = CP_STATUS_SUCCESS;
+                    }
+                }
+                break;
+
+            case SD_CMD_SET_GNSS_RATE:
+                if (params_len != 2) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    uint16_t rate_ms = (uint16_t) params[0] |
+                                       ((uint16_t) params[1] << 8);
+                    if ((rate_ms < 40U) || (rate_ms > 1000U)) {
+                        status = CP_STATUS_INVALID_PARAMETER;
+                    } else if (FS_GNSS_SetRateMs(rate_ms) != HAL_OK) {
+                        status = CP_STATUS_OPERATION_FAILED;
+                    } else {
+                        status = CP_STATUS_SUCCESS;
                     }
                 }
                 break;

@@ -6,11 +6,11 @@ This document describes the Bluetooth Low Energy (BLE) interface for the FlySigh
 
 The interface utilizes standard BLE GATT services where applicable, but primarily relies on custom services for its core functionality. Familiarity with BLE concepts (GATT, Services, Characteristics, UUIDs, Notifications, Writes, Bonding, Security Modes) is recommended.
 
-**Note:** This interface is under active development. Details may change in future firmware versions. This documentation reflects the state based on developer discussions and firmware code (`v2024.11.11.release_candidate` or similar, check `flysight.txt` for exact version).
+**Note:** This interface is under active development. Details may change in future firmware versions. This documentation reflects the current code in this repository's `develop` branch.
 
 ## Prerequisites
 
-*   **Firmware:** A FlySight 2 unit running firmware version `v2024.11.11.release_candidate` or later is recommended to ensure compatibility with the features described here, especially the pairing mechanism and connection timeout. Firmware updates can be performed via the [online tool](https://flysight.ca/firmware/?include_beta=true). Note that different hardware batches (B1-B5, identifiable via `flysight.txt` or serial number) require specific firmware builds.
+*   **Firmware:** A FlySight 2 unit running a recent firmware build from this repository's `develop` branch (or newer) is recommended to ensure compatibility with the features described here. Firmware updates can be performed via the [online tool](https://flysight.ca/firmware/?include_beta=true). Note that different hardware batches (B1-B5, identifiable via `flysight.txt` or serial number) require specific firmware builds.
 *   **BLE Client:** A BLE central device (e.g., smartphone, computer) with a compatible BLE stack and application, supporting secure connections (pairing/bonding) and configurable MTU.
 
 ## Core Concepts
@@ -258,10 +258,18 @@ Timestamp semantics:
                     *   Payload: `[sensor_id (uint8)] [divider_low (uint8)] [divider_high (uint8)]`. (Total length: 4 bytes)
                     *   `sensor_id`: 0=Baro, 1=Humidity, 2=Accel, 3=Gyro, 4=Mag
                     *   `divider`: 1-65535 (little-endian uint16_t). Decimation factor: 1=every sample, 2=every 2nd sample, etc.
-                    *   Note: Value 0 is reserved for auto-calculation (only valid in config.txt at boot, not via control point). GPS divider not configurable (use Rate setting instead).
+                    *   Note: Value 0 triggers auto-calculation using current sensor ODR and BLE budget limits. GPS divider is not configurable (use GNSS rate setting instead).
                     *   Changes are temporary until reboot. Use config.txt for persistent settings.
                 *   `0x11` (`SD_CMD_GET_BLE_DIVIDER`): Request the current BLE transmission divider for a sensor.
                     *   Payload: `[sensor_id (uint8)]`. (Total length: 2 bytes)
+                *   `0x12` (`SD_CMD_SET_GNSS_MODEL`): Set u-blox dynamic platform model at runtime.
+                    *   Payload: `[model (uint8)]`. (Total length: 2 bytes)
+                    *   Allowed values: 0 (Portable), 2 (Stationary), 3 (Pedestrian), 4 (Automotive), 5 (Sea), 6 (Airborne 1G), 7 (Airborne 2G), 8 (Airborne 4G).
+                    *   Applied immediately via UBX-CFG-NAV5 with `mask=0x0001`. Not persisted to `config.txt`.
+                *   `0x13` (`SD_CMD_SET_GNSS_RATE`): Set GNSS measurement interval at runtime.
+                    *   Payload: `[rate_low (uint8)] [rate_high (uint8)]`. (Total length: 3 bytes)
+                    *   `rate_ms`: 40-1000 ms (little-endian uint16_t).
+                    *   Applied immediately via UBX-CFG-RATE. Not persisted to `config.txt`.
                 *   `0x20` (`SD_CMD_SET_FUSION_MAG_HARD`): Set magnetometer hard-iron calibration (for sensor fusion).
                     *   Payload: `[x_offset (int16_t)] [y_offset (int16_t)] [z_offset (int16_t)]`. (Total length: 7 bytes)
                     *   Offsets in milligauss. Compensates for constant magnetic field offsets.
@@ -270,6 +278,7 @@ Timestamp semantics:
                     *   Payload: `[xx (int32_t)] [xy (int32_t)] [xz (int32_t)] [yx (int32_t)] [yy (int32_t)] [yz (int32_t)] [zx (int32_t)] [zy (int32_t)] [zz (int32_t)]`. (Total length: 37 bytes)
                     *   Matrix elements scaled by 1,000,000 (e.g., 1.05 → 1050000). Little-endian int32_t.
                     *   Compensates for magnetic field distortion. Requires advanced calibration procedure.
+                    *   Current limitation: `SD_Control_Point` maximum length is 20 bytes, so this command cannot be sent as documented until characteristic length/protocol framing is extended.
                     *   Changes take effect immediately and persist until power cycle (not saved to config.txt).
         *   **Indication Responses (FlySight to Central, if indications enabled):**
             *   Format: `[0xF0 (CP_RESPONSE_ID)] [Request Opcode] [Status] [Optional Data]`
@@ -281,10 +290,18 @@ Timestamp semantics:
                 *   Invalid Param: `[0xF0] [0x02] [0x03 (CP_STATUS_INVALID_PARAMETER)]`
             *   For `SD_CMD_SET_BLE_DIVIDER (0x10)`:
                 *   Success: `[0xF0] [0x10] [0x01 (CP_STATUS_SUCCESS)]`
-                *   Invalid Param: `[0xF0] [0x10] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (invalid sensor_id or divider=0)
+                *   Invalid Param: `[0xF0] [0x10] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (invalid sensor_id or bandwidth validation failed)
             *   For `SD_CMD_GET_BLE_DIVIDER (0x11)`:
                 *   Success: `[0xF0] [0x11] [0x01 (CP_STATUS_SUCCESS)] [sensor_id (uint8)] [divider_low (uint8)] [divider_high (uint8)]`
                 *   Invalid Param: `[0xF0] [0x11] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (invalid sensor_id)
+            *   For `SD_CMD_SET_GNSS_MODEL (0x12)`:
+                *   Success: `[0xF0] [0x12] [0x01 (CP_STATUS_SUCCESS)]`
+                *   Invalid Param: `[0xF0] [0x12] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (invalid model value)
+                *   Operation Failed: `[0xF0] [0x12] [0x04 (CP_STATUS_OPERATION_FAILED)]` (GNSS command did not ACK)
+            *   For `SD_CMD_SET_GNSS_RATE (0x13)`:
+                *   Success: `[0xF0] [0x13] [0x01 (CP_STATUS_SUCCESS)]`
+                *   Invalid Param: `[0xF0] [0x13] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (rate outside 40-1000 ms)
+                *   Operation Failed: `[0xF0] [0x13] [0x04 (CP_STATUS_OPERATION_FAILED)]` (GNSS command did not ACK)
             *   For `SD_CMD_SET_FUSION_MAG_HARD (0x20)`:
                 *   Success: `[0xF0] [0x20] [0x01 (CP_STATUS_SUCCESS)]`
                 *   Invalid Param: `[0xF0] [0x20] [0x03 (CP_STATUS_INVALID_PARAMETER)]` (incorrect payload length)
@@ -472,11 +489,15 @@ Provides information about the device's current operational state and allows for
             *   `0x12` (`DS_CMD_REQUEST_START`): Request start mode. Accepted only from sleep.
             *   `0x13` (`DS_CMD_REQUEST_CONFIG`): Request config mode. Accepted only from sleep.
             *   `0x14` (`DS_CMD_REQUEST_PAIRING`): Request pairing mode. Accepted only from sleep.
+            *   `0x15` (`DS_CMD_SET_EXT_SYNC`): Set external synchronization timestamp used in CSV headers.
+                *   Payload: `[ext_sync (uint32_t, little-endian)]`. (Total length: 5 bytes)
+                *   Stores `$VAR,EXT_SYNC,<value>` for log headers written by `FS_Log_WriteCommonHeader` (currently GNSS and Event logs).
             *   USB mode is not requestable over BLE. USB entry/exit remains controlled by VBUS and the USB host.
         *   **Indication Responses (FlySight to Central, if indications enabled):**
             *   Format: `[0xF0 (CP_RESPONSE_ID)] [Request Opcode] [Status] [Optional Data]`
             *   Query commands return optional data on success.
             *   Reset/install/mode requests return `CP_STATUS_SUCCESS` when the request is accepted. The action is started after response progress or a short fallback timeout.
+            *   `DS_CMD_SET_EXT_SYNC` returns `CP_STATUS_SUCCESS` when payload length is valid and timestamp is stored.
             *   `CP_STATUS_BUSY`: another Device State terminal/mode request is pending.
             *   `CP_STATUS_OPERATION_NOT_PERMITTED`: the request is not allowed from the current mode or by policy, including all such requests while USB mode is active.
             *   `CP_STATUS_INVALID_PARAMETER`: payload length is invalid.
@@ -518,9 +539,11 @@ FlySight 2 also implements standard BLE services:
     *   **Gyroscope:** int32_t, deg/s × 1000 (e.g., 90°/s = 90000)
     *   **Quaternion:** int16_t, component × 10000 (e.g., 1.0 = 10000, normalized magnitude = 10000)
     *   **Magnetometer:** int16_t, mGauss (milligauss)
-    *   **Barometer:** int32_t, Pa (pascals)
+    *   **Barometer:** int32_t, Pa × 100
     *   **Humidity:** uint16_t, % × 10 (e.g., 45.3% = 453)
-    *   **Temperature:** int16_t, °C × 100 (e.g., 25.5°C = 2550)
+    *   **Temperature:** int16_t, sensor-dependent scaling
+    *   **Temperature (Baro/Accel/Gyro):** °C × 100 (e.g., 25.5°C = 2550)
+    *   **Temperature (Hum/Mag):** °C × 10 (e.g., 25.5°C = 255)
     *   **GPS Position:** int32_t, degrees × 10⁷ or mm
     *   **GPS Velocity:** int32_t, mm/s
 *   **Code Examples:** Refer extensively to the provided Python, iOS, and Android examples for practical implementation details, especially for the GBN ARQ logic.
@@ -537,7 +560,7 @@ FlySight 2 also implements standard BLE services:
 | Sensor Data Service     |                           | `00000001-cc7a-482a-984a-7f2ed5b3e58f`       | Sensor_Data        |                        | N/A                |
 | GNSS Measurement        | `SD_GNSS_Measurement`     | `00000000-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 44 (Var)           |
 | Sensor Data Control     | `SD_Control_Point`        | `00000006-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Write, Indicate        | 20 (Var)           |
-| Baro Measurement        | `SD_BARO_Measurement`     | `00000008-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 10 (Var)           |
+| Baro Measurement        | `SD_BARO_Measurement`     | `00000008-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 12 (Var)           |
 | Humidity Measurement    | `SD_HUM_Measurement`      | `0000000C-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 12 (Var)           |
 | Accel Measurement       | `SD_ACCEL_Measurement`    | `00000009-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 20 (Var)           |
 | Gyro Measurement        | `SD_GYRO_Measurement`     | `0000000A-8e22-4541-9d4c-21edae82ed19`       | Sensor_Data        | Read, Notify           | 28 (Var)           |
