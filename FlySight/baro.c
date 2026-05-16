@@ -27,6 +27,7 @@
 #include "config.h"
 #include "log.h"
 #include "sensor.h"
+#include "sensor_time.h"
 
 #define BARO_ADDR             0xba
 #define BARO_REG_WHO_AM_I     0x0f
@@ -222,7 +223,7 @@ void FS_Baro_Read(void)
 	}
 
 	sensor_is_busy = true;
-	baroData.time = HAL_GetTick();
+	baroData.time = FS_SensorTime_GetTicks();
 	if (FS_Sensor_ReadAsync(BARO_ADDR, BARO_REG_PRESS_OUT_XL, dataBuf, 5, FS_Baro_Read_Callback) != HAL_OK)
 	{
 		// Abort this measurement cycle and reset the state to allow the next one.

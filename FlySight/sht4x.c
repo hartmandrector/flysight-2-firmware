@@ -27,6 +27,7 @@
 #include "hum.h"
 #include "log.h"
 #include "sensor.h"
+#include "sensor_time.h"
 #include "sht4x.h"
 
 #define READ_TIMER_MSEC    10
@@ -169,7 +170,7 @@ static void FS_SHT4X_Measure(void)
 	}
 
 	sensor_is_busy = true;
-	humData->time = HAL_GetTick();
+	humData->time = FS_SensorTime_GetTicks();
 	buf[0] = SHT4X_MEASURE_HIGH_PRECISION;
 	if (FS_Sensor_TransmitAsync(SHT4X_ADDR, buf, 1, FS_SHT4X_Measure_Callback) != HAL_OK)
 	{

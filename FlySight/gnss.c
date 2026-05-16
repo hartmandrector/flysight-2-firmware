@@ -26,6 +26,7 @@
 #include "config.h"
 #include "gnss.h"
 #include "log.h"
+#include "sensor_time.h"
 #include "state.h"
 #include "stm32_seq.h"
 
@@ -1041,7 +1042,7 @@ const FS_GNSS_Data_t *FS_GNSS_GetData(void)
 
 void FS_GNSS_Timepulse(void)
 {
-	gnssTime.time = HAL_GetTick();
+	gnssTime.time = FS_SensorTime_GetTicks();
 
 	if (time_ready_callback)
 	{

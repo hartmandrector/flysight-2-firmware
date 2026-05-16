@@ -84,6 +84,7 @@ uint32_t hnucleo_SpixTimeout = NUCLEO_SPIx_TIMEOUT_MAX;        /*<! Value of Tim
 #ifdef HAL_SPI_MODULE_ENABLED
 /* SD IO functions */
 void                      SD_IO_Init(void);
+void                      SD_IO_SetDefaultSpeed(void);
 void                      SD_IO_CSState(uint8_t state);
 void                      SD_IO_WriteReadData(const uint8_t *DataIn, uint8_t *DataOut, uint16_t DataLength);
 uint8_t                   SD_IO_WriteByte(uint8_t Data);
@@ -155,19 +156,29 @@ static uint8_t SPIx_WriteRead(uint8_t Value)
 
 /********************************* LINK SD ************************************/
 /**
+  * @brief  Set SPI2 baud-rate prescaler.
+  * @param  Prescaler: SPI baud-rate prescaler bits.
+  * @retval None
+  */
+static void SD_SPI_SetPrescaler(uint32_t Prescaler)
+{
+  /* Disable SPI before changing prescaler */
+  __HAL_SPI_DISABLE(&hspi2);
+
+  MODIFY_REG(hspi2.Instance->CR1, SPI_CR1_BR, Prescaler);
+
+  /* Re-enable SPI */
+  __HAL_SPI_ENABLE(&hspi2);
+}
+
+/**
   * @brief  Set SPI2 to slow speed for SD card initialization (250 kHz)
   * @retval None
   */
 static void SD_SPI_SetSlowSpeed(void)
 {
-  /* Disable SPI before changing prescaler */
-  __HAL_SPI_DISABLE(&hspi2);
-
   /* Set prescaler to 256: 64 MHz / 256 = 250 kHz */
-  MODIFY_REG(hspi2.Instance->CR1, SPI_CR1_BR, SPI_BAUDRATEPRESCALER_256);
-
-  /* Re-enable SPI */
-  __HAL_SPI_ENABLE(&hspi2);
+  SD_SPI_SetPrescaler(SPI_BAUDRATEPRESCALER_256);
 }
 
 /* Cache of CubeMX-configured SPI2 CR1.BR bits so we can restore the exact
@@ -181,22 +192,26 @@ static uint8_t  sd_spi2_fast_br_valid = 0;
   */
 void SD_IO_SetFastSpeed(void)
 {
-  /* Disable SPI before changing prescaler */
-  __HAL_SPI_DISABLE(&hspi2);
-
   if (sd_spi2_fast_br_valid)
   {
     /* Restore prescaler configured by CubeMX in MX_SPI2_Init() */
-    MODIFY_REG(hspi2.Instance->CR1, SPI_CR1_BR, sd_spi2_fast_br_bits);
+    SD_SPI_SetPrescaler(sd_spi2_fast_br_bits);
   }
   else
   {
     /* Fallback: CubeMX default used previously */
-    MODIFY_REG(hspi2.Instance->CR1, SPI_CR1_BR, SPI_BAUDRATEPRESCALER_2);
+    SD_SPI_SetPrescaler(SPI_BAUDRATEPRESCALER_2);
   }
+}
 
-  /* Re-enable SPI */
-  __HAL_SPI_ENABLE(&hspi2);
+/**
+  * @brief  Set SPI2 to default-speed SD data transfer (16 MHz).
+  * @retval None
+  */
+void SD_IO_SetDefaultSpeed(void)
+{
+  /* 64 MHz / 4 = 16 MHz, below the 25 MHz SD default-speed limit. */
+  SD_SPI_SetPrescaler(SPI_BAUDRATEPRESCALER_4);
 }
 
 /**
