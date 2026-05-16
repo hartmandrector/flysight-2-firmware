@@ -23,6 +23,8 @@
 
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "main.h"
 #include "app_common.h"
@@ -30,6 +32,7 @@
 #include "config.h"
 #include "ff.h"
 #include "log.h"
+#include "scratch_buffer.h"
 #include "state.h"
 #include "stm32_seq.h"
 #include "rtc_util.h"
@@ -168,12 +171,46 @@ typedef enum
 
 static FS_Log_State_t logState = LOG_STATE_UNINITIALIZED;
 
-#define SENSOR_BATCH_SIZE 2048
+#define SENSOR_BATCH_MAX_SIZE FS_SCRATCH_BUFFER_SIZE
+#define sensorBatchBuf ((char *) FS_ScratchBuffer_Get())
 
-static char sensorBatchBuf[SENSOR_BATCH_SIZE];
+static uint32_t sensorBatchTargetLen = 0;
 static uint32_t sensorBatchLen = 0;
+static bool sensorSyncPending = false;
+static bool sensorBatchBufferAcquired = false;
 
-static void FS_Log_FlushSensorBatch(void)
+static bool FS_Log_AcquireSensorBatchBuffer(void)
+{
+	if (FS_ScratchBuffer_Acquire(FS_SCRATCH_BUFFER_OWNER_SENSOR_BATCH) == 0)
+	{
+		return false;
+	}
+
+	sensorBatchBufferAcquired = true;
+	return true;
+}
+
+static void FS_Log_ReleaseSensorBatchBuffer(void)
+{
+	if (sensorBatchBufferAcquired)
+	{
+		FS_ScratchBuffer_Release(FS_SCRATCH_BUFFER_OWNER_SENSOR_BATCH);
+		sensorBatchBufferAcquired = false;
+	}
+}
+
+static void FS_Log_FlushFullSensorBatch(void)
+{
+	UINT bw;
+	if (sensorBatchLen == sensorBatchTargetLen)
+	{
+		f_write(&sensorFile, sensorBatchBuf, sensorBatchLen, &bw);
+		sensorBatchLen = 0;
+		sensorSyncPending = true;
+	}
+}
+
+static void FS_Log_FlushFinalSensorBatch(void)
 {
 	UINT bw;
 	if (sensorBatchLen > 0)
@@ -185,12 +222,45 @@ static void FS_Log_FlushSensorBatch(void)
 
 static void FS_Log_WriteSensorBatch(const char *data, uint32_t len)
 {
-	if (sensorBatchLen + len > SENSOR_BATCH_SIZE)
+	while (len > 0)
 	{
-		FS_Log_FlushSensorBatch();
+		uint32_t chunkLen;
+		uint32_t spaceLeft = sensorBatchTargetLen - sensorBatchLen;
+
+		chunkLen = MIN(len, spaceLeft);
+		memcpy(sensorBatchBuf + sensorBatchLen, data, chunkLen);
+		sensorBatchLen += chunkLen;
+		data += chunkLen;
+		len -= chunkLen;
+
+		FS_Log_FlushFullSensorBatch();
 	}
-	memcpy(sensorBatchBuf + sensorBatchLen, data, len);
-	sensorBatchLen += len;
+}
+
+static void FS_Log_WriteSensorBatchString(const char *data)
+{
+	while (*data != '\0')
+	{
+		if ((_USE_STRFUNC == 2) && (*data == '\n'))
+		{
+			const char cr = '\r';
+			FS_Log_WriteSensorBatch(&cr, 1);
+		}
+		FS_Log_WriteSensorBatch(data, 1);
+		++data;
+	}
+}
+
+static void FS_Log_WriteSensorBatchHex(const uint32_t *data, uint32_t count)
+{
+	char hex[9];
+	uint32_t i;
+
+	for (i = 0; i < count; ++i)
+	{
+		sprintf(hex, "%08lx", (unsigned long) data[i]);
+		FS_Log_WriteSensorBatchString(hex);
+	}
 }
 
 static void FS_Log_Timer(void)
@@ -700,8 +770,10 @@ static void FS_Log_Sync(void)
 	case 2:
 		if (enable_flags & FS_LOG_ENABLE_SENSOR)
 		{
-			FS_Log_FlushSensorBatch();
-			f_sync(&sensorFile);
+			if (sensorSyncPending && (f_sync(&sensorFile) == FR_OK))
+			{
+				sensorSyncPending = false;
+			}
 		}
 		break;
 	case 3:
@@ -765,6 +837,45 @@ static void FS_Log_WriteCommonHeader(FIL *file)
 	}
 }
 
+static void FS_Log_WriteCommonSensorHeader(void)
+{
+	// Write file format
+	FS_Log_WriteSensorBatchString("$FLYS,1\n");
+
+	// Write firmware version
+	FS_Log_WriteSensorBatchString("$VAR,FIRMWARE_VER,");
+	FS_Log_WriteSensorBatchString(GIT_TAG);
+	FS_Log_WriteSensorBatchString("\n");
+
+	// Write device ID
+	FS_Log_WriteSensorBatchString("$VAR,DEVICE_ID,");
+	FS_Log_WriteSensorBatchHex(FS_State_Get()->device_id, 3);
+	FS_Log_WriteSensorBatchString("\n");
+
+	// Write session ID
+	FS_Log_WriteSensorBatchString("$VAR,SESSION_ID,");
+	FS_Log_WriteSensorBatchHex(FS_State_Get()->session_id, 3);
+	FS_Log_WriteSensorBatchString("\n");
+}
+
+static void FS_Log_WriteSensorHeader(void)
+{
+	FS_Log_WriteCommonSensorHeader();
+	FS_Log_WriteSensorBatchString("$COL,BARO,time,pressure,temperature\n");
+	FS_Log_WriteSensorBatchString("$UNIT,BARO,s,Pa,deg C\n");
+	FS_Log_WriteSensorBatchString("$COL,HUM,time,humidity,temperature\n");
+	FS_Log_WriteSensorBatchString("$UNIT,HUM,s,percent,deg C\n");
+	FS_Log_WriteSensorBatchString("$COL,MAG,time,x,y,z,temperature\n");
+	FS_Log_WriteSensorBatchString("$UNIT,MAG,s,gauss,gauss,gauss,deg C\n");
+	FS_Log_WriteSensorBatchString("$COL,IMU,time,wx,wy,wz,ax,ay,az,temperature\n");
+	FS_Log_WriteSensorBatchString("$UNIT,IMU,s,deg/s,deg/s,deg/s,g,g,g,deg C\n");
+	FS_Log_WriteSensorBatchString("$COL,TIME,time,tow,week\n");
+	FS_Log_WriteSensorBatchString("$UNIT,TIME,s,s,\n");
+	FS_Log_WriteSensorBatchString("$COL,VBAT,time,voltage\n");
+	FS_Log_WriteSensorBatchString("$UNIT,VBAT,s,volt\n");
+	FS_Log_WriteSensorBatchString("$DATA\n");
+}
+
 static FRESULT delete_node (
 		TCHAR* path,    /* Path name buffer with the sub-directory to delete */
 		UINT sz_buff,   /* Size of path name buffer (items) */
@@ -812,6 +923,7 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 
 	// Save enable flags
 	enable_flags = flags;
+	sensorBatchBufferAcquired = false;
 
 	// Reset state
 	baroRdI = 0;
@@ -939,22 +1051,26 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 			return HAL_ERROR;
 		}
 
-		FS_Log_WriteCommonHeader(&sensorFile);
-		f_printf(&sensorFile, "$COL,BARO,time,pressure,temperature\n");
-		f_printf(&sensorFile, "$UNIT,BARO,s,Pa,deg C\n");
-		f_printf(&sensorFile, "$COL,HUM,time,humidity,temperature\n");
-		f_printf(&sensorFile, "$UNIT,HUM,s,percent,deg C\n");
-		f_printf(&sensorFile, "$COL,MAG,time,x,y,z,temperature\n");
-		f_printf(&sensorFile, "$UNIT,MAG,s,gauss,gauss,gauss,deg C\n");
-		f_printf(&sensorFile, "$COL,IMU,time,wx,wy,wz,ax,ay,az,temperature,q_w,q_x,q_y,q_z\n");
-		f_printf(&sensorFile, "$UNIT,IMU,s,deg/s,deg/s,deg/s,g,g,g,deg C,,,,\n");
-		f_printf(&sensorFile, "$COL,TIME,time,tow,week\n");
-		f_printf(&sensorFile, "$UNIT,TIME,s,s,\n");
-		f_printf(&sensorFile, "$COL,VBAT,time,voltage\n");
-		f_printf(&sensorFile, "$UNIT,VBAT,s,volt\n");
-		f_printf(&sensorFile, "$DATA\n");
-		f_sync(&sensorFile);
+		sensorBatchTargetLen = (uint32_t) sensorFile.obj.fs->csize * _MAX_SS;
 		sensorBatchLen = 0;
+		sensorSyncPending = false;
+
+		if ((sensorBatchTargetLen == 0) ||
+				(sensorBatchTargetLen > SENSOR_BATCH_MAX_SIZE))
+		{
+			f_close(&sensorFile);
+			logState = LOG_STATE_FAILED;
+			return HAL_ERROR;
+		}
+
+		if (!FS_Log_AcquireSensorBatchBuffer())
+		{
+			f_close(&sensorFile);
+			logState = LOG_STATE_FAILED;
+			return HAL_ERROR;
+		}
+
+		FS_Log_WriteSensorHeader();
 	}
 
 	if (enable_flags & FS_LOG_ENABLE_EVENT)
@@ -963,6 +1079,7 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 		sprintf(path, "/temp/%04lu/event.csv", temp_folder);
 		if (f_open(&eventFile, path, FA_WRITE|FA_CREATE_ALWAYS) != FR_OK)
 		{
+			FS_Log_ReleaseSensorBatchBuffer();
 			logState = LOG_STATE_FAILED;
 			return HAL_ERROR;
 		}
@@ -1040,8 +1157,9 @@ void FS_Log_DeInit(uint32_t temp_folder)
 	}
 	if (enable_flags & FS_LOG_ENABLE_SENSOR)
 	{
-		FS_Log_FlushSensorBatch();
+		FS_Log_FlushFinalSensorBatch();
 		f_close(&sensorFile);
+		FS_Log_ReleaseSensorBatchBuffer();
 	}
 	if (enable_flags & FS_LOG_ENABLE_EVENT)
 	{

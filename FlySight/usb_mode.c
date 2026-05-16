@@ -28,6 +28,7 @@
 #include "usb_control.h"
 #include "usb_device.h"
 #include "usbd_core.h"
+#include "usbd_storage_if.h"
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 extern UART_HandleTypeDef huart1;
@@ -51,6 +52,12 @@ void FS_USBMode_Init(void)
 
 void FS_USBMode_DeInit(void)
 {
+	/* Flush any deferred USB mass-storage writes before shutting down. */
+	if (USBD_SyncStorage() < 0)
+	{
+		Error_Handler();
+	}
+
 	/* Disable controller */
 	FS_USBControl_DeInit();
 
@@ -58,6 +65,11 @@ void FS_USBMode_DeInit(void)
 
 	/* Disable USB interface */
 	if (USBD_DeInit(&hUsbDeviceFS) != USBD_OK)
+	{
+		Error_Handler();
+	}
+
+	if (USBD_DeInitStorage() < 0)
 	{
 		Error_Handler();
 	}

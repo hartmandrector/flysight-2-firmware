@@ -1,7 +1,7 @@
 /***************************************************************************
 **                                                                        **
 **  FlySight 2 firmware                                                   **
-**  Copyright 2025 Bionic Avionics Inc.                                   **
+**  Copyright 2023 Bionic Avionics Inc.                                   **
 **                                                                        **
 **  This program is free software: you can redistribute it and/or modify  **
 **  it under the terms of the GNU General Public License as published by  **
@@ -21,27 +21,18 @@
 **  Website: http://flysight.ca/                                          **
 ****************************************************************************/
 
-#ifndef DEVICE_STATE_H_
-#define DEVICE_STATE_H_
+#ifndef USB_STORAGE_CACHE_H_
+#define USB_STORAGE_CACHE_H_
 
 #include <stdint.h>
 
-/**
- * @brief Handles commands written to the Device State (DS) Control Point characteristic.
- *
- * @param payload Pointer to the incoming command payload (first byte is cmd_opcode).
- * @param length Length of the payload.
- * @param conn_handle Connection handle.
- * @param notification_enabled_flag Flag indicating if notifications are enabled for the DS Control Point.
- */
-void DeviceState_Handle_DS_ControlPointWrite(const uint8_t *payload, uint8_t length,
-                                             uint16_t conn_handle, uint8_t notification_enabled_flag);
+int8_t FS_USBStorageCache_Init(void);
+int8_t FS_USBStorageCache_DeInit(void);
+void FS_USBStorageCache_Reset(void);
+void FS_USBStorageCache_SetCapacity(uint32_t block_count);
+void FS_USBStorageCache_SetActivityCallbacks(void (*begin)(void), void (*end)(void));
+int8_t FS_USBStorageCache_Read(uint8_t *buf, uint32_t blk_addr, uint16_t blk_len);
+int8_t FS_USBStorageCache_Write(uint8_t *buf, uint32_t blk_addr, uint16_t blk_len);
+int8_t FS_USBStorageCache_Flush(void);
 
-void DeviceState_Handle_DS_ControlPointNotificationComplete(uint16_t attr_handle);
-
-/**
- * @brief Initializes the Device State service module.
- */
-void DeviceState_Init(void);
-
-#endif /* DEVICE_STATE_H_ */
+#endif /* USB_STORAGE_CACHE_H_ */

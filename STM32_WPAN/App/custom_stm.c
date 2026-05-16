@@ -117,6 +117,12 @@ static SVCCTL_EvtAckStatus_t Custom_STM_Event_Handler(void *pckt);
 
 /* Functions Definition ------------------------------------------------------*/
 /* USER CODE BEGIN PFD */
+bool Custom_STM_IsDsControlPointNotificationComplete(uint16_t attr_handle)
+{
+  return (attr_handle == CustomContext.CustomDs_Control_PointHdle) ||
+         (attr_handle == (CustomContext.CustomDs_Control_PointHdle +
+             CHARACTERISTIC_VALUE_ATTRIBUTE_OFFSET));
+}
 
 /* USER CODE END PFD */
 

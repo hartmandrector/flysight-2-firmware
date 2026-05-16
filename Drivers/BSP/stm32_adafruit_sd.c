@@ -182,6 +182,7 @@ typedef enum {
 #define SD_CMD_READ_SINGLE_BLOCK      17  /* CMD17 = 0x51 */
 #define SD_CMD_READ_MULT_BLOCK        18  /* CMD18 = 0x52 */
 #define SD_CMD_SET_BLOCK_COUNT        23  /* CMD23 = 0x57 */
+#define SD_ACMD_SET_WR_BLK_ERASE_COUNT 23 /* ACMD23 = 0x57 after CMD55 */
 #define SD_CMD_WRITE_SINGLE_BLOCK     24  /* CMD24 = 0x58 */
 #define SD_CMD_WRITE_MULT_BLOCK       25  /* CMD25 = 0x59 */
 #define SD_CMD_PROG_CSD               27  /* CMD27 = 0x5B */
@@ -274,8 +275,10 @@ static uint8_t SD_GetCSDRegister(SD_CSD* Csd);
 static uint8_t SD_GetDataResponse(void);
 static uint8_t SD_GoIdleState(void);
 static uint8_t SD_EnableHighSpeedMode(void);
+static uint8_t SD_SetPreEraseBlockCount(uint32_t BlockCount);
 static uint8_t SD_ReadSwitchStatus(uint32_t Arg, uint8_t *Status);
 static SD_CmdAnswer_typedef SD_SendCmd(uint8_t Cmd, uint32_t Arg, uint8_t Crc, uint8_t Answer);
+static uint8_t SD_StopTransmission(uint32_t Timeout);
 static uint8_t SD_WaitData(uint8_t data);
 static uint8_t SD_ReadData(void);
 /** @defgroup STM32_ADAFRUIT_SD_Private_Function_Prototypes
@@ -376,8 +379,14 @@ uint8_t BSP_SD_ReadBlocks(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOfBloc
   uint32_t offset = 0;
   uint32_t addr;
   uint8_t retr = BSP_SD_ERROR;
+  uint8_t stopTransmission = 0;
   SD_CmdAnswer_typedef response;
   uint16_t BlockSize = 512;
+
+  if (NumOfBlocks == 0U)
+  {
+    return BSP_SD_OK;
+  }
 
   /* Send CMD16 only for SDSC cards - SDHC has fixed 512-byte blocks */
   if (flag_SDHC == 0)
@@ -396,10 +405,9 @@ uint8_t BSP_SD_ReadBlocks(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOfBloc
   /* Initialize the address */
   addr = (ReadAddr * ((flag_SDHC == 1) ? 1 : BlockSize));
 
-  /* Data transfer */
-  while (NumOfBlocks--)
+  if (NumOfBlocks == 1U)
   {
-    /* Send CMD17 (SD_CMD_READ_SINGLE_BLOCK) to read one block */
+    /* === Single-block read with CMD17 === */
     /* Check if the SD acknowledged the read block command: R1 response (0x00: no errors) */
     response = SD_SendCmd(SD_CMD_READ_SINGLE_BLOCK, addr, 0xFF, SD_ANSWER_R1_EXPECTED);
     if ( response.r1 != SD_R1_NO_ERROR)
@@ -415,7 +423,6 @@ uint8_t BSP_SD_ReadBlocks(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOfBloc
 
       /* Set next read address*/
       offset += BlockSize;
-      addr = ((flag_SDHC == 1) ? (addr + 1) : (addr + BlockSize));
 
       /* get CRC bytes (not really needed by us, but required by SD) */
       SD_IO_WriteByte(SD_DUMMY_BYTE);
@@ -430,10 +437,52 @@ uint8_t BSP_SD_ReadBlocks(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOfBloc
     SD_IO_CSState(1);
     SD_IO_WriteByte(SD_DUMMY_BYTE);
   }
+  else
+  {
+    /* === Multi-block read with CMD18 === */
+    response = SD_SendCmd(SD_CMD_READ_MULT_BLOCK, addr, 0xFF, SD_ANSWER_R1_EXPECTED);
+    if (response.r1 != SD_R1_NO_ERROR)
+    {
+      goto error;
+    }
+    stopTransmission = 1;
+
+    while (NumOfBlocks--)
+    {
+      /* Now look for the data token to signify the start of the data */
+      if (SD_WaitData(SD_TOKEN_START_DATA_MULTIPLE_BLOCK_READ) == BSP_SD_OK)
+      {
+        /* Read the SD block data : read NumByteToRead data */
+        SD_IO_WriteReadData(sd_dummy_buf, (uint8_t*)pData + offset, BlockSize);
+
+        /* Set next read address*/
+        offset += BlockSize;
+
+        /* get CRC bytes (not really needed by us, but required by SD) */
+        SD_IO_WriteByte(SD_DUMMY_BYTE);
+        SD_IO_WriteByte(SD_DUMMY_BYTE);
+      }
+      else
+      {
+        goto error;
+      }
+    }
+
+    if (SD_StopTransmission(Timeout) != BSP_SD_OK)
+    {
+      goto error;
+    }
+    stopTransmission = 0;
+  }
 
   retr = BSP_SD_OK;
 
 error :
+  if (stopTransmission != 0U)
+  {
+    (void)SD_StopTransmission(Timeout);
+  }
+
   /* Send dummy byte: 8 Clock pulses of delay */
   SD_IO_CSState(1);
   SD_IO_WriteByte(SD_DUMMY_BYTE);
@@ -506,6 +555,8 @@ uint8_t BSP_SD_WriteBlocks(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBl
   else
   {
     /* === Multi-block write with CMD25 === */
+    (void)SD_SetPreEraseBlockCount(NumOfBlocks);
+
     response = SD_SendCmd(SD_CMD_WRITE_MULT_BLOCK, addr, 0xFF, SD_ANSWER_R1_EXPECTED);
     if (response.r1 != SD_R1_NO_ERROR)
     {
@@ -958,6 +1009,46 @@ SD_CmdAnswer_typedef SD_SendCmd(uint8_t Cmd, uint32_t Arg, uint8_t Crc, uint8_t 
 }
 
 /**
+  * @brief  Stops an active multi-block read transaction.
+  * @param  Timeout: Timeout count while waiting for the card to become ready.
+  * @retval SD status
+  */
+static uint8_t SD_StopTransmission(uint32_t Timeout)
+{
+  uint8_t frame[SD_CMD_LENGTH], frameout[SD_CMD_LENGTH];
+  uint8_t response;
+
+  frame[0] = (SD_CMD_STOP_TRANSMISSION | 0x40);
+  frame[1] = 0x00;
+  frame[2] = 0x00;
+  frame[3] = 0x00;
+  frame[4] = 0x00;
+  frame[5] = 0xFF;
+
+  SD_IO_CSState(0);
+  SD_IO_WriteReadData(frame, frameout, SD_CMD_LENGTH);
+
+  /* CMD12 returns one stuff byte before the R1 response in SPI mode. */
+  SD_IO_WriteByte(SD_DUMMY_BYTE);
+
+  response = SD_ReadData();
+  if (response != SD_R1_NO_ERROR)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  do
+  {
+    if (SD_IO_WriteByte(SD_DUMMY_BYTE) == SD_DUMMY_BYTE)
+    {
+      return BSP_SD_OK;
+    }
+  } while (Timeout-- != 0U);
+
+  return BSP_SD_TIMEOUT;
+}
+
+/**
   * @brief  Gets the SD card data response and check the busy flag.
   * @param  None
   * @retval The SD status: Read data response xxx0<status>1
@@ -1000,6 +1091,36 @@ uint8_t SD_GetDataResponse(void)
 
   /* Return response */
   return rvalue;
+}
+
+/**
+  * @brief  Provides an SD ACMD23 pre-erase hint before a multi-block write.
+  * @param  BlockCount: Number of 512-byte blocks about to be written.
+  * @retval SD status
+  */
+static uint8_t SD_SetPreEraseBlockCount(uint32_t BlockCount)
+{
+  SD_CmdAnswer_typedef response;
+
+  /* ACMD23 is an optimization hint. Some cards do not support it, so callers
+     should ignore failure and continue with the write. */
+  response = SD_SendCmd(SD_CMD_APP_CMD, 0x00000000, 0xFF, SD_ANSWER_R1_EXPECTED);
+  SD_IO_CSState(1);
+  SD_IO_WriteByte(SD_DUMMY_BYTE);
+  if (response.r1 != SD_R1_NO_ERROR)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  response = SD_SendCmd(SD_ACMD_SET_WR_BLK_ERASE_COUNT, BlockCount, 0xFF, SD_ANSWER_R1_EXPECTED);
+  SD_IO_CSState(1);
+  SD_IO_WriteByte(SD_DUMMY_BYTE);
+  if (response.r1 != SD_R1_NO_ERROR)
+  {
+    return BSP_SD_ERROR;
+  }
+
+  return BSP_SD_OK;
 }
 
 

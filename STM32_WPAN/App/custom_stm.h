@@ -28,6 +28,7 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
 #include "ble_types.h"
 /* USER CODE END Includes */
 
@@ -170,6 +171,7 @@ void SVCCTL_InitCustomSvc(void);
 void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotification);
 tBleStatus Custom_STM_App_Update_Char(Custom_STM_Char_Opcode_t CharOpcode,  uint8_t *pPayload);
 /* USER CODE BEGIN EF */
+bool Custom_STM_IsDsControlPointNotificationComplete(uint16_t attr_handle);
 
 /* USER CODE END EF */
 

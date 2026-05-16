@@ -480,7 +480,7 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
 
     case CUSTOM_STM_NOTIFICATION_COMPLETE_EVT:
       /* USER CODE BEGIN CUSTOM_STM_NOTIFICATION_COMPLETE_EVT */
-
+      DeviceState_Handle_DS_ControlPointNotificationComplete(pNotification->AttrHandle);
       /* USER CODE END CUSTOM_STM_NOTIFICATION_COMPLETE_EVT */
       break;
 

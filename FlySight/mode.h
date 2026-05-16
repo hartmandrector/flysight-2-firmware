@@ -32,8 +32,8 @@ typedef enum
 	FS_MODE_EVENT_VBUS_HIGH,
 	FS_MODE_EVENT_VBUS_LOW,
 	FS_MODE_EVENT_FORCE_UPDATE,
-	FS_MODE_EVENT_BLE_SET_ACTIVE,
-	FS_MODE_EVENT_BLE_SET_SLEEP
+	FS_MODE_EVENT_REQUEST_STATE,
+	FS_MODE_EVENT_TERMINAL_ACTION
 } FS_Mode_Event_t;
 
 typedef enum
@@ -49,8 +49,27 @@ typedef enum
 	FS_MODE_STATE_COUNT
 } FS_Mode_State_t;
 
+typedef enum
+{
+	FS_MODE_REQUEST_ACCEPTED,
+	FS_MODE_REQUEST_INVALID,
+	FS_MODE_REQUEST_BUSY,
+	FS_MODE_REQUEST_NOT_ALLOWED
+} FS_Mode_RequestResult_t;
+
+typedef enum
+{
+	FS_TERMINAL_ACTION_NONE,
+	FS_TERMINAL_ACTION_RESET,
+	FS_TERMINAL_ACTION_INSTALL_UPLOADED_FIRMWARE,
+
+	FS_TERMINAL_ACTION_COUNT
+} FS_TerminalAction_t;
+
 void FS_Mode_Init(void);
 void FS_Mode_PushQueue(FS_Mode_Event_t event);
 FS_Mode_State_t FS_Mode_State(void);
+FS_Mode_RequestResult_t FS_Mode_RequestState(FS_Mode_State_t target_state);
+FS_Mode_RequestResult_t FS_Mode_RequestTerminalAction(FS_TerminalAction_t action);
 
 #endif /* MODE_H_ */

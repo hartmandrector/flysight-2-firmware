@@ -23,6 +23,7 @@
 
 #include "main.h"
 #include "app_common.h"
+#include "common.h"
 
 #define TIMEOUT_VALUE 100
 

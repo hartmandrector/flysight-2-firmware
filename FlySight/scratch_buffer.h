@@ -1,7 +1,7 @@
 /***************************************************************************
 **                                                                        **
 **  FlySight 2 firmware                                                   **
-**  Copyright 2025 Bionic Avionics Inc.                                   **
+**  Copyright 2023 Bionic Avionics Inc.                                   **
 **                                                                        **
 **  This program is free software: you can redistribute it and/or modify  **
 **  it under the terms of the GNU General Public License as published by  **
@@ -21,27 +21,23 @@
 **  Website: http://flysight.ca/                                          **
 ****************************************************************************/
 
-#ifndef DEVICE_STATE_H_
-#define DEVICE_STATE_H_
+#ifndef SCRATCH_BUFFER_H_
+#define SCRATCH_BUFFER_H_
 
 #include <stdint.h>
 
-/**
- * @brief Handles commands written to the Device State (DS) Control Point characteristic.
- *
- * @param payload Pointer to the incoming command payload (first byte is cmd_opcode).
- * @param length Length of the payload.
- * @param conn_handle Connection handle.
- * @param notification_enabled_flag Flag indicating if notifications are enabled for the DS Control Point.
- */
-void DeviceState_Handle_DS_ControlPointWrite(const uint8_t *payload, uint8_t length,
-                                             uint16_t conn_handle, uint8_t notification_enabled_flag);
+#define FS_SCRATCH_BUFFER_SIZE 32768U
 
-void DeviceState_Handle_DS_ControlPointNotificationComplete(uint16_t attr_handle);
+typedef enum
+{
+	FS_SCRATCH_BUFFER_OWNER_NONE = 0,
+	FS_SCRATCH_BUFFER_OWNER_SENSOR_BATCH,
+	FS_SCRATCH_BUFFER_OWNER_USB_STORAGE_CACHE
+} FS_ScratchBufferOwner_t;
 
-/**
- * @brief Initializes the Device State service module.
- */
-void DeviceState_Init(void);
+uint8_t *FS_ScratchBuffer_Acquire(FS_ScratchBufferOwner_t owner);
+void FS_ScratchBuffer_Release(FS_ScratchBufferOwner_t owner);
+uint8_t *FS_ScratchBuffer_Get(void);
+FS_ScratchBufferOwner_t FS_ScratchBuffer_GetOwner(void);
 
-#endif /* DEVICE_STATE_H_ */
+#endif /* SCRATCH_BUFFER_H_ */
