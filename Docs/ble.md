@@ -199,6 +199,11 @@ Packets sent over `FT_Packet_In` (WriteWithoutResponse) and received via notific
 
 Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. Requires bonding.
 
+Timestamp semantics:
+- `SD_GNSS_Measurement` time uses GNSS `iTOW` (ms).
+- Sensor stream time fields (`SD_BARO_Measurement`, `SD_HUM_Measurement`, `SD_ACCEL_Measurement`, `SD_GYRO_Measurement`, `SD_MAG_Measurement`) use the local monotonic sensor timer in milliseconds (uint32), derived from a microsecond counter started when Active Mode starts.
+- Sensor stream timestamps are not UTC and not GNSS week/TOW.
+
 *   **Service UUID:** `00000001-cc7a-482a-984a-7f2ed5b3e58f`
 *   **Characteristics:**
 
@@ -292,14 +297,14 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
         *   Properties: **Read, Notify**
         *   Permissions: Encrypted Read/Write required.
         *   Usage: Streams barometric sensor data. Updates only when FlySight is in Active Mode. Central must enable notifications.
-        *   Max Length: 10 bytes (`SizeSd_Baro_Measurement`). Variable length.
+        *   Max Length: 12 bytes (`SizeSd_Baro_Measurement`). Variable length.
         *   **Data Format (Little Endian):**
             *   Byte 0: `mask` (uint8). Bitmask indicating which fields are present.
                 *   `0x80` (`BARO_BLE_BIT_TIME`): Timestamp included.
                 *   `0x40` (`BARO_BLE_BIT_PRESSURE`): Pressure included.
                 *   `0x20` (`BARO_BLE_BIT_TEMPERATURE`): Temperature included.
             *   If `BARO_BLE_BIT_TIME` set: `time` (uint32_t). Timestamp in ms. (4 bytes)
-            *   If `BARO_BLE_BIT_PRESSURE` set: `pressure` (int32_t). Pressure in Pa. (4 bytes)
+            *   If `BARO_BLE_BIT_PRESSURE` set: `pressure` (int32_t). Pressure in Pa * 100. (4 bytes)
             *   If `BARO_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
 
     *   **`SD_HUM_Measurement` (Humidity)**
@@ -315,7 +320,7 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
                 *   `0x20` (`HUM_BLE_BIT_TEMPERATURE`): Temperature included.
             *   If `HUM_BLE_BIT_TIME` set: `time` (uint32_t). Timestamp in ms. (4 bytes)
             *   If `HUM_BLE_BIT_HUMIDITY` set: `humidity` (uint16_t). Relative humidity in 0.1%. (2 bytes)
-            *   If `HUM_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
+            *   If `HUM_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.1°C. (2 bytes)
         *   Default Mask: `0xE0` (all fields enabled).
 
     *   **`SD_ACCEL_Measurement` (Accelerometer)**
@@ -383,7 +388,7 @@ Provides live GNSS and IMU data when FlySight is in Active Mode or Start Mode. R
                 *   `mx` (int16_t). X-axis magnetic field in mGauss. (2 bytes)
                 *   `my` (int16_t). Y-axis magnetic field in mGauss. (2 bytes)
                 *   `mz` (int16_t). Z-axis magnetic field in mGauss. (2 bytes)
-            *   If `MAG_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.01°C. (2 bytes)
+            *   If `MAG_BLE_BIT_TEMPERATURE` set: `temperature` (int16_t). Temperature in 0.1°C. (2 bytes)
         *   Default Mask: `0xE0` (all fields enabled).
 
 ### 3. Starter_Pistol Service

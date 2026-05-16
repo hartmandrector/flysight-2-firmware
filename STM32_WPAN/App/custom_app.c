@@ -1019,7 +1019,7 @@ void Custom_BARO_Update(const FS_Baro_Data_t *current)
 void Custom_ACCEL_Update(const FS_IMU_Data_t *current)
 {
   /* Decimation: only send every Nth sample */
-  uint8_t divider = ACCEL_BLE_GetDivider();
+  uint16_t divider = ACCEL_BLE_GetDivider();
   if (++accel_sample_counter < divider)
   {
     return;
@@ -1038,7 +1038,7 @@ void Custom_ACCEL_Update(const FS_IMU_Data_t *current)
 void Custom_GYRO_Update(const FS_IMU_Data_t *current)
 {
   /* Decimation: only send every Nth sample */
-  uint8_t divider = GYRO_BLE_GetDivider();
+  uint16_t divider = GYRO_BLE_GetDivider();
   if (++gyro_sample_counter < divider)
   {
     return;
@@ -1057,7 +1057,7 @@ void Custom_GYRO_Update(const FS_IMU_Data_t *current)
 void Custom_MAG_Update(const FS_Mag_Data_t *current)
 {
   /* Decimation: only send every Nth sample */
-  uint8_t divider = MAG_BLE_GetDivider();
+  uint16_t divider = MAG_BLE_GetDivider();
   if (++mag_sample_counter < divider)
   {
     return;

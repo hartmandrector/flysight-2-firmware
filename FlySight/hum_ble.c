@@ -70,11 +70,13 @@ void HUM_BLE_SetDivider(uint16_t divider)
 uint8_t HUM_BLE_Build(const FS_Hum_Data_t *src, uint8_t *dst)
 {
     uint8_t *p = dst;
+    uint32_t time_ms;
 
     *p++ = s_mask;                                          /* byte 0 : mask        */
 
     if (s_mask & HUM_BLE_BIT_TIME) {                        /* time (ms)            */
-        memcpy(p, &src->time, sizeof(src->time));         p += 4;
+        time_ms = (uint32_t)(src->time / 1000ULL);
+        memcpy(p, &time_ms, sizeof(time_ms));             p += sizeof(time_ms);
     }
 
     if (s_mask & HUM_BLE_BIT_HUMIDITY) {                    /* humidity (% * 10)    */
