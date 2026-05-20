@@ -340,18 +340,8 @@ void FS_Fusion_UpdateIMU(uint32_t time_ms,
     fusion_status.accelerometerIgnored = states.accelerometerIgnored;
     fusion_status.magnetometerIgnored = states.magnetometerIgnored;
     fusion_status.angularRateRecovery = flags.angularRateRecovery;
-    
-    /* Log AHRS data (quaternion scaled to int16 * 10000) */
-    if (FS_Config_Get()->enable_logging)
-    {
-        FS_AHRS_Data_t ahrs_data;
-        ahrs_data.time = time_ms;
-        ahrs_data.q_w = (int16_t)(q.element.w * 10000.0f);
-        ahrs_data.q_x = (int16_t)(q.element.x * 10000.0f);
-        ahrs_data.q_y = (int16_t)(q.element.y * 10000.0f);
-        ahrs_data.q_z = (int16_t)(q.element.z * 10000.0f);
-        FS_Log_WriteAHRSData(&ahrs_data);
-    }
+
+    /* Quaternion is logged as part of the IMU record via active_control.c */
 }
 
 const FS_Fusion_Data_t* FS_Fusion_GetData(void)

@@ -33,16 +33,6 @@
 #include "mag.h"
 #include "vbat.h"
 
-/* AHRS fusion output data */
-typedef struct
-{
-	uint32_t time;        /* Timestamp (ms) */
-	int16_t  q_w;         /* Quaternion W * 10000 */
-	int16_t  q_x;         /* Quaternion X * 10000 */
-	int16_t  q_y;         /* Quaternion Y * 10000 */
-	int16_t  q_z;         /* Quaternion Z * 10000 */
-} FS_AHRS_Data_t;
-
 #define FS_LOG_ENABLE_GNSS   0x01
 #define FS_LOG_ENABLE_SENSOR 0x02
 #define FS_LOG_ENABLE_RAW    0x04
@@ -63,7 +53,6 @@ void FS_Log_WriteGNSSTime(const FS_GNSS_Time_t *current);
 void FS_Log_WriteGNSSRaw(const FS_GNSS_Raw_t *current);
 void FS_Log_WriteIMUData(const FS_IMU_Data_t *current);
 void FS_Log_WriteVBATData(const FS_VBAT_Data_t *current);
-void FS_Log_WriteAHRSData(const FS_AHRS_Data_t *current);
 void FS_Log_WriteEvent(const char *format, ...);
 void FS_Log_WriteEventAsync(const char *format, ...);
 
