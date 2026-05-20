@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "ble_config.h"
+#include "current_config.h"
 #include "sensor_odr.h"
 
 uint16_t FS_BLE_CalculateDivider(uint8_t odr_setting,
@@ -63,11 +64,16 @@ FS_BLE_ValidationResult_t FS_BLE_ValidateConfig(const FS_Config_Data_t *config)
     memset(&result, 0, sizeof(result));
     
     uint32_t total = 0;
-    
-    // GPS rate (no divider - user controlled via Rate parameter)
-    if (config->rate > 0 && config->enable_gnss) {
-        uint16_t gps_hz = 1000 / config->rate;  // Convert ms to Hz
-        total += (gps_hz * BLE_GPS_PACKET_SIZE);
+
+    /* GPS rate — use runtime effective value so control-point changes are reflected. */
+    {
+        const CC_RuntimeConfig_t *cc = CC_Get();
+        if (cc->enable_gnss && cc->gnss_rate_ms.effective > 0) {
+            uint16_t gps_hz = 1000u / cc->gnss_rate_ms.effective;
+            total += (uint32_t)gps_hz * BLE_GPS_PACKET_SIZE;
+        }
+        /* ActiveLook bandwidth slice (already computed by CC_RecomputeBudget). */
+        total += cc->ble_activelook_bytes_per_sec;
     }
     
     // Helper macro for each sensor
@@ -118,11 +124,17 @@ void FS_BLE_AutoCalculateDividers(FS_Config_Data_t *config)
     // 3. If over budget, scale auto dividers by percentage to fit
     // 4. Enforce minimum rate on all sensors
     
-    // Step 1: Calculate GPS bandwidth (highest priority)
+    /* Step 1: Calculate GPS + ActiveLook bandwidth (highest priority). */
     uint32_t gps_bandwidth = 0;
-    if (config->rate > 0 && config->enable_gnss) {
-        uint16_t gps_hz = 1000 / config->rate;
-        gps_bandwidth = gps_hz * BLE_GPS_PACKET_SIZE;
+    uint32_t al_bandwidth  = 0;
+    {
+        const CC_RuntimeConfig_t *cc = CC_Get();
+        if (cc->enable_gnss && cc->gnss_rate_ms.effective > 0) {
+            uint16_t gps_hz = 1000u / cc->gnss_rate_ms.effective;
+            gps_bandwidth = (uint32_t)gps_hz * BLE_GPS_PACKET_SIZE;
+        }
+        /* ActiveLook bandwidth (already computed by CC_RecomputeBudget). */
+        al_bandwidth = cc->ble_activelook_bytes_per_sec;
     }
     
     // Define sensor array for calculations
@@ -178,7 +190,7 @@ void FS_BLE_AutoCalculateDividers(FS_Config_Data_t *config)
     }
     
     // Step 3: Calculate remaining budget for auto sensors
-    int32_t remaining_budget = BLE_SAFE_THROUGHPUT_LIMIT - gps_bandwidth - manual_bandwidth;
+    int32_t remaining_budget = BLE_SAFE_THROUGHPUT_LIMIT - gps_bandwidth - al_bandwidth - manual_bandwidth;
     if (remaining_budget < 0) {
         remaining_budget = 0;  // Manual + GPS already exceed budget
     }

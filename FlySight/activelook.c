@@ -4,6 +4,7 @@
 #include "activelook_mode0.h"
 #include "app_common.h"
 #include "config.h"
+#include "current_config.h"
 #include "dbg_trace.h"
 #include "stm32_seq.h"
 #include <string.h>
@@ -269,6 +270,10 @@ static void FS_ActiveLook_Timer(void)
  ******************************************************************************/
 void FS_ActiveLook_Init(void)
 {
+    /* Inform Current Config that ActiveLook is active so the BLE budget
+     * calculation includes the AL bandwidth slice. */
+    CC_SetAlEnabled(true, CC_SRC_FILE);
+
     /* Register the callback for discovery */
     FS_ActiveLook_Client_RegisterCb(&s_alk_cb);
 

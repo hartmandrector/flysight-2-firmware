@@ -912,10 +912,6 @@ HAL_StatusTypeDef FS_Log_Init(uint32_t temp_folder, uint8_t flags)
 	vbatWrI = 0;
 	vbatUsed = 0;
 
-	ahrsRdI = 0;
-	ahrsWrI = 0;
-	ahrsUsed = 0;
-
 	// Check if RTC has been previously set by GNSS
 	if (FS_RTC_IsValid())
 	{
@@ -1083,7 +1079,6 @@ void FS_Log_DeInit(uint32_t temp_folder)
 		FS_Log_WriteEvent("%lu/%lu slots used in $RAW message buffer",  rawUsed, RAW_COUNT);
 		FS_Log_WriteEvent("%lu/%lu slots used in $IMU message buffer",  imuUsed, IMU_COUNT);
 		FS_Log_WriteEvent("%lu/%lu slots used in $VBAT message buffer", vbatUsed, VBAT_COUNT);
-		FS_Log_WriteEvent("%lu/%lu slots used in $AHRS message buffer", ahrsUsed, AHRS_COUNT);
 		FS_Log_WriteEvent("%lu/%lu slots used in $EVNT message buffer", eventUsed, EVENT_COUNT);
 
 		// Add event log entries for timing info

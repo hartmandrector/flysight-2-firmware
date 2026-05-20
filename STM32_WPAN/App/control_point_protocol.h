@@ -37,6 +37,10 @@
 #define CP_STATUS_BUSY                      (0x06)
 #define CP_STATUS_ERROR_UNKNOWN             (0x07)
 
+// First byte of a continuation packet in a multi-packet response.
+// Subsequent bytes: [seq: uint8] [data...]
+#define CP_CONTINUATION_ID (0xF1)
+
 #define MAX_CP_OPTIONAL_RESPONSE_DATA_LEN 17 // Max optional data in a response
 
 #endif /* APP_CONTROL_POINT_PROTOCOL_H_ */

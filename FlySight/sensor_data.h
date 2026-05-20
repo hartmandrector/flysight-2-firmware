@@ -40,6 +40,13 @@
 #define SD_CMD_SET_GNSS_RATE       0x13 // Payload: [rate_low (1 byte)] [rate_high (1 byte)]
                                         // rate: 40-1000 ms (little-endian uint16_t)
 
+#define SD_CMD_GET_CURRENT_CONFIG  0x30 // Payload: (none)
+                                        // Multi-packet response (see Docs/CURRENT_CONFIG_DESIGN.md):
+                                        //   Pkt 1: [0xF0][0x30][SUCCESS][total_len(1)][16 bytes of payload]
+                                        //   Pkt N: [0xF1][seq(1)][up to 18 bytes of payload]
+                                        // Payload = 82 bytes: revision, ODRs, dividers, AL state,
+                                        //           budget summary, warning_flags.
+
 // Fusion AHRS magnetometer calibration (runtime override)
 #define SD_CMD_SET_FUSION_MAG_HARD 0x20 // Payload: [x_lsb x_msb y_lsb y_msb z_lsb z_msb] (3 × int16_t milligauss, little-endian)
 #define SD_CMD_SET_FUSION_MAG_SOFT 0x21 // Payload: [m0_lsb ...m0_msb m1... m8_msb] (9 × int32_t scaled by 1000000, little-endian)

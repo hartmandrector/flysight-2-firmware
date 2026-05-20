@@ -41,6 +41,7 @@
 #include "state.h"
 #include "vbat.h"
 #include "ble_config.h"
+#include "current_config.h"
 
 extern UART_HandleTypeDef huart1;
 extern ADC_HandleTypeDef hadc1;
@@ -75,6 +76,9 @@ void FS_ActiveMode_Init(void)
 	{
 		FS_Config_Read(FS_State_Get()->config_filename);
 	}
+
+	/* Seed runtime configuration from file config */
+	CC_Init(FS_Config_Get());
 
 	/* Validate BLE configuration */
 	{

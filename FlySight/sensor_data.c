@@ -34,6 +34,7 @@
 #include "fusion_integration.h" // For Fusion calibration setters
 #include "ble_config.h"       // For validation and auto-calculation
 #include "config.h"           // For FS_Config_Get
+#include "current_config.h"   // For CC_SetGnssRateMs, CC_SetBleDivider, CC_Get
 #include "gnss.h"             // For FS_GNSS_SetDynamicModel, FS_GNSS_SetRateMs
 #include "string.h"           // For memcpy
 #include "app_common.h"       // For APP_DBG_MSG (optional)
@@ -46,6 +47,101 @@ void SensorData_Init(void)
 	  GNSS_BLE_Init();
 }
 
+/* Apply all effective BLE dividers from CC to the streaming modules.
+ * Must be called after any CC mutation that can change effective dividers
+ * (GNSS rate change, divider set) so hardware state stays in sync with CC. */
+static void cc_apply_ble_dividers(void)
+{
+    const CC_RuntimeConfig_t *cc = CC_Get();
+    BARO_BLE_SetDivider(cc->ble_baro_divider.effective);
+    HUM_BLE_SetDivider(cc->ble_hum_divider.effective);
+    ACCEL_BLE_SetDivider(cc->ble_accel_divider.effective);
+    GYRO_BLE_SetDivider(cc->ble_gyro_divider.effective);
+    MAG_BLE_SetDivider(cc->ble_mag_divider.effective);
+}
+
+/* Build and send the Current Config snapshot as a sequence of BLE notifications
+ * on CUSTOM_STM_SD_CONTROL_POINT.
+ *
+ * Framing:
+ *   Packet 1 : [0xF0][0x30][SUCCESS][total_len:u8][16 bytes payload]
+ *   Packets 2+: [0xF1][seq:u8][up to 18 bytes payload]
+ *
+ * Payload (82 bytes, all little-endian):
+ *   revision(u32)
+ *   gnss_rate_ms / baro_odr / hum_odr / accel_odr / gyro_odr / mag_odr
+ *     / ble_baro_div / ble_hum_div / ble_accel_div / ble_gyro_div / ble_mag_div
+ *     / al_rate_ms    → each field: requested(u16) effective(u16) source(u8) = 5 bytes
+ *   al_enabled(u8)
+ *   ble_estimated_bytes_per_sec(u32)  ble_sensor_bytes_per_sec(u32)
+ *   ble_activelook_bytes_per_sec(u32)  ble_budget_ok(u8)  warning_flags(u32)
+ */
+#define CC_BLE_SNAPSHOT_LEN   82u
+#define CC_SNAP_FIRST_DATA    16u   /* payload bytes in packet 1 (after 4-byte header) */
+#define CC_SNAP_CONT_DATA     18u   /* payload bytes per continuation packet           */
+
+static void send_cc_snapshot(void)
+{
+    const CC_RuntimeConfig_t *cc = CC_Get();
+    uint8_t payload[CC_BLE_SNAPSHOT_LEN];
+    uint8_t *p = payload;
+
+#define PACK_U16(v) do { *p++ = (uint8_t)(v); *p++ = (uint8_t)((v) >> 8); } while (0)
+#define PACK_U32(v) do { *p++ = (uint8_t)(v);       *p++ = (uint8_t)((v) >> 8); \
+                         *p++ = (uint8_t)((v) >> 16); *p++ = (uint8_t)((v) >> 24); } while (0)
+#define PACK_FIELD(f) do { PACK_U16((f).requested); PACK_U16((f).effective); *p++ = (f).source; } while (0)
+
+    PACK_U32(cc->revision);
+    PACK_FIELD(cc->gnss_rate_ms);
+    PACK_FIELD(cc->baro_odr);
+    PACK_FIELD(cc->hum_odr);
+    PACK_FIELD(cc->accel_odr);
+    PACK_FIELD(cc->gyro_odr);
+    PACK_FIELD(cc->mag_odr);
+    PACK_FIELD(cc->ble_baro_divider);
+    PACK_FIELD(cc->ble_hum_divider);
+    PACK_FIELD(cc->ble_accel_divider);
+    PACK_FIELD(cc->ble_gyro_divider);
+    PACK_FIELD(cc->ble_mag_divider);
+    PACK_FIELD(cc->al_rate_ms);
+    *p++ = cc->al_enabled ? 1u : 0u;
+    PACK_U32(cc->ble_estimated_bytes_per_sec);
+    PACK_U32(cc->ble_sensor_bytes_per_sec);
+    PACK_U32(cc->ble_activelook_bytes_per_sec);
+    *p++ = cc->ble_budget_ok ? 1u : 0u;
+    PACK_U32(cc->warning_flags);
+
+#undef PACK_FIELD
+#undef PACK_U32
+#undef PACK_U16
+
+    /* First packet: 4-byte header + CC_SNAP_FIRST_DATA bytes of payload */
+    uint8_t pkt[20];
+    pkt[0] = CP_RESPONSE_ID;
+    pkt[1] = SD_CMD_GET_CURRENT_CONFIG;
+    pkt[2] = CP_STATUS_SUCCESS;
+    pkt[3] = (uint8_t)CC_BLE_SNAPSHOT_LEN;
+    memcpy(&pkt[4], &payload[0], CC_SNAP_FIRST_DATA);
+    BLE_TX_Queue_SendTxPacket(CUSTOM_STM_SD_CONTROL_POINT,
+                              pkt, 4u + CC_SNAP_FIRST_DATA,
+                              &SizeSd_Control_Point, 0);
+
+    /* Continuation packets: [0xF1][seq][up to CC_SNAP_CONT_DATA bytes] */
+    uint8_t offset = CC_SNAP_FIRST_DATA;
+    uint8_t seq    = 1u;
+    while (offset < CC_BLE_SNAPSHOT_LEN) {
+        uint8_t chunk = CC_BLE_SNAPSHOT_LEN - offset;
+        if (chunk > CC_SNAP_CONT_DATA) chunk = CC_SNAP_CONT_DATA;
+        pkt[0] = CP_CONTINUATION_ID;
+        pkt[1] = seq++;
+        memcpy(&pkt[2], &payload[offset], chunk);
+        BLE_TX_Queue_SendTxPacket(CUSTOM_STM_SD_CONTROL_POINT,
+                                  pkt, (uint8_t)(2u + chunk),
+                                  &SizeSd_Control_Point, 0);
+        offset += chunk;
+    }
+}
+
 void SensorData_Handle_SD_ControlPointWrite(
 		const uint8_t *payload, uint8_t length,
 		uint16_t conn_handle, uint8_t notification_enabled_flag)
@@ -56,6 +152,7 @@ void SensorData_Handle_SD_ControlPointWrite(
     uint8_t status = CP_STATUS_ERROR_UNKNOWN;
     uint8_t response_data_buf[MAX_CP_OPTIONAL_RESPONSE_DATA_LEN] = {0};
     uint8_t response_data_len = 0;
+    bool response_sent = false;
 
     if (length < 1)
     {
@@ -95,57 +192,15 @@ void SensorData_Handle_SD_ControlPointWrite(
                 } else {
                     uint8_t sensor_id = params[0];
                     uint16_t divider = params[1] | (params[2] << 8); // Little-endian
-                    
-                    // Validate sensor_id first
-                    if (sensor_id > 4) {
-                        status = CP_STATUS_INVALID_PARAMETER; // Invalid sensor_id
+                    /* CC_SetBleDivider validates sensor_id, updates requested value,
+                     * recomputes budget (recalculating all auto dividers), and
+                     * increments revision. Then we apply all effective dividers to
+                     * the BLE streaming modules so auto peers update too. */
+                    if (!CC_SetBleDivider(sensor_id, divider, CC_SRC_CONTROL_POINT)) {
+                        status = CP_STATUS_INVALID_PARAMETER;
                     } else {
-                        // Create temporary config for validation
-                        FS_Config_Data_t temp_config = *FS_Config_Get();
-                        
-                        // Sync with runtime divider state from sensor modules
-                        // (Control point changes don't update config struct, only sensor modules)
-                        temp_config.ble_baro_divider = BARO_BLE_GetDivider();
-                        temp_config.ble_hum_divider = HUM_BLE_GetDivider();
-                        temp_config.ble_accel_divider = ACCEL_BLE_GetDivider();
-                        temp_config.ble_gyro_divider = GYRO_BLE_GetDivider();
-                        temp_config.ble_mag_divider = MAG_BLE_GetDivider();
-                        
-                        // Apply requested divider to temp config
-                        uint16_t *divider_field = NULL;
-                        switch (sensor_id) {
-                            case 0: divider_field = &temp_config.ble_baro_divider; break;
-                            case 1: divider_field = &temp_config.ble_hum_divider; break;
-                            case 2: divider_field = &temp_config.ble_accel_divider; break;
-                            case 3: divider_field = &temp_config.ble_gyro_divider; break;
-                            case 4: divider_field = &temp_config.ble_mag_divider; break;
-                        }
-                        
-                        // If divider=0, run auto-calculation to get calculated value
-                        if (divider == 0) {
-                            *divider_field = 0; // Set to auto-mode
-                            FS_BLE_AutoCalculateDividers(&temp_config);
-                            divider = *divider_field; // Extract calculated divider
-                        } else {
-                            *divider_field = divider;
-                        }
-                        
-                        // Validate bandwidth with new divider
-                        FS_BLE_ValidationResult_t result = FS_BLE_ValidateConfig(&temp_config);
-                        
-                        if (!result.valid) {
-                            status = CP_STATUS_INVALID_PARAMETER;
-                        } else {
-                            // Apply divider to actual sensor
-                            switch (sensor_id) {
-                                case 0: BARO_BLE_SetDivider(divider); break;
-                                case 1: HUM_BLE_SetDivider(divider); break;
-                                case 2: ACCEL_BLE_SetDivider(divider); break;
-                                case 3: GYRO_BLE_SetDivider(divider); break;
-                                case 4: MAG_BLE_SetDivider(divider); break;
-                            }
-                            status = CP_STATUS_SUCCESS;
-                        }
+                        cc_apply_ble_dividers();
+                        status = CP_STATUS_SUCCESS;
                     }
                 }
                 break;
@@ -155,27 +210,16 @@ void SensorData_Handle_SD_ControlPointWrite(
                     status = CP_STATUS_INVALID_PARAMETER;
                 } else {
                     uint8_t sensor_id = params[0];
+                    const CC_RuntimeConfig_t *cc = CC_Get();
                     uint16_t divider = 0;
-                    
-                    if (sensor_id == 0) {
-                        divider = BARO_BLE_GetDivider();
-                        status = CP_STATUS_SUCCESS;
-                    } else if (sensor_id == 1) {
-                        divider = HUM_BLE_GetDivider();
-                        status = CP_STATUS_SUCCESS;
-                    } else if (sensor_id == 2) {
-                        divider = ACCEL_BLE_GetDivider();
-                        status = CP_STATUS_SUCCESS;
-                    } else if (sensor_id == 3) {
-                        divider = GYRO_BLE_GetDivider();
-                        status = CP_STATUS_SUCCESS;
-                    } else if (sensor_id == 4) {
-                        divider = MAG_BLE_GetDivider();
-                        status = CP_STATUS_SUCCESS;
-                    } else {
-                        status = CP_STATUS_INVALID_PARAMETER; // Invalid sensor_id
+                    switch (sensor_id) {
+                        case CC_SENSOR_BARO:  divider = cc->ble_baro_divider.effective;  status = CP_STATUS_SUCCESS; break;
+                        case CC_SENSOR_HUM:   divider = cc->ble_hum_divider.effective;   status = CP_STATUS_SUCCESS; break;
+                        case CC_SENSOR_ACCEL: divider = cc->ble_accel_divider.effective; status = CP_STATUS_SUCCESS; break;
+                        case CC_SENSOR_GYRO:  divider = cc->ble_gyro_divider.effective;  status = CP_STATUS_SUCCESS; break;
+                        case CC_SENSOR_MAG:   divider = cc->ble_mag_divider.effective;   status = CP_STATUS_SUCCESS; break;
+                        default: status = CP_STATUS_INVALID_PARAMETER; break;
                     }
-                    
                     if (status == CP_STATUS_SUCCESS) {
                         response_data_buf[0] = sensor_id;
                         response_data_buf[1] = divider & 0xFF;        // Low byte
@@ -215,11 +259,14 @@ void SensorData_Handle_SD_ControlPointWrite(
                 } else {
                     uint16_t rate_ms = (uint16_t) params[0] |
                                        ((uint16_t) params[1] << 8);
-                    if ((rate_ms < 40U) || (rate_ms > 1000U)) {
+                    if (!CC_SetGnssRateMs(rate_ms, CC_SRC_CONTROL_POINT)) {
                         status = CP_STATUS_INVALID_PARAMETER;
                     } else if (FS_GNSS_SetRateMs(rate_ms) != HAL_OK) {
                         status = CP_STATUS_OPERATION_FAILED;
                     } else {
+                        /* GNSS rate change recomputes auto dividers in CC;
+                         * propagate updated effective values to BLE modules. */
+                        cc_apply_ble_dividers();
                         status = CP_STATUS_SUCCESS;
                     }
                 }
@@ -282,13 +329,22 @@ void SensorData_Handle_SD_ControlPointWrite(
                 }
                 break;
 
+            case SD_CMD_GET_CURRENT_CONFIG:
+                if (params_len != 0) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else if (notification_enabled_flag) {
+                    send_cc_snapshot();
+                    response_sent = true;
+                }
+                break;
+
             default:
                 status = CP_STATUS_CMD_NOT_SUPPORTED;
                 break;
         }
     }
 
-    if (notification_enabled_flag)
+    if (notification_enabled_flag && !response_sent)
     {
         uint8_t final_response_packet[3 + MAX_CP_OPTIONAL_RESPONSE_DATA_LEN];
         uint8_t total_response_len = 3;

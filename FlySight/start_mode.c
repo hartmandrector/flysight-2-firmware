@@ -29,6 +29,7 @@
 #include "gnss.h"
 #include "log.h"
 #include "resource_manager.h"
+#include "current_config.h"
 #include "start_control.h"
 #include "state.h"
 
@@ -57,6 +58,9 @@ void FS_StartMode_Init(void)
 	{
 		FS_Config_Read(FS_State_Get()->config_filename);
 	}
+
+	/* Seed runtime configuration from file config */
+	CC_Init(FS_Config_Get());
 
 	if (FS_Config_Get()->enable_logging)
 	{

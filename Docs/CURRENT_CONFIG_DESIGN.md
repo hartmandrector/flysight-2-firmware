@@ -352,7 +352,7 @@ Migration is additive and per-phase. No phase breaks existing behaviour.
 
 | Phase | Files Changed | Files Added |
 |---|---|---|
-| 1 | `config.c` (call CC_Init after read) | `current_config.c`, `current_config.h` |
+| 1 | `active_mode.c`, `start_mode.c` (call CC_Init after all config reads including selectable overlay) | `current_config.c`, `current_config.h` |
 | 2 | `sensor_data.c`, `ble_config.c`, `activelook.c` | — |
 | 3 | `sensor_data.c`, `custom_app.c` | — |
 | 4 | `sensor_data.c` (new ODR commands) | — |
