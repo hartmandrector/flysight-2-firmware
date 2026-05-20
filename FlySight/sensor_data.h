@@ -40,12 +40,21 @@
 #define SD_CMD_SET_GNSS_RATE       0x13 // Payload: [rate_low (1 byte)] [rate_high (1 byte)]
                                         // rate: 40-1000 ms (little-endian uint16_t)
 
-#define SD_CMD_GET_CURRENT_CONFIG  0x30 // Payload: (none)
-                                        // Multi-packet response (see Docs/CURRENT_CONFIG_DESIGN.md):
-                                        //   Pkt 1: [0xF0][0x30][SUCCESS][total_len(1)][16 bytes of payload]
-                                        //   Pkt N: [0xF1][seq(1)][up to 18 bytes of payload]
-                                        // Payload = 82 bytes: revision, ODRs, dividers, AL state,
-                                        //           budget summary, warning_flags.
+// --- Current-config single-packet queries (replace old multi-packet 0x30) ---
+#define SD_CMD_GET_SENSOR_ODRS     0x31 // Payload: (none)
+                                        // Response data (10 bytes): per-sensor ODR index + source
+                                        //   [baro_idx][baro_src][hum_idx][hum_src]
+                                        //   [accel_idx][accel_src][gyro_idx][gyro_src]
+                                        //   [mag_idx][mag_src]
+#define SD_CMD_GET_RATES           0x32 // Payload: (none)
+                                        // Response data (11 bytes): GNSS rate + AL rate + al_enabled
+                                        //   [gnss_req(u16 LE)][gnss_eff(u16 LE)][gnss_src]
+                                        //   [al_req(u16 LE)][al_eff(u16 LE)][al_src]
+                                        //   [al_enabled]
+#define SD_CMD_GET_BLE_BUDGET      0x33 // Payload: (none)
+                                        // Response data (17 bytes): BLE bandwidth summary + warnings
+                                        //   [est_bps(u32 LE)][sensor_bps(u32 LE)][al_bps(u32 LE)]
+                                        //   [budget_ok][warning_flags(u32 LE)]
 
 // Fusion AHRS magnetometer calibration (runtime override)
 #define SD_CMD_SET_FUSION_MAG_HARD 0x20 // Payload: [x_lsb x_msb y_lsb y_msb z_lsb z_msb] (3 × int16_t milligauss, little-endian)

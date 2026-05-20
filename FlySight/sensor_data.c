@@ -60,87 +60,7 @@ static void cc_apply_ble_dividers(void)
     MAG_BLE_SetDivider(cc->ble_mag_divider.effective);
 }
 
-/* Build and send the Current Config snapshot as a sequence of BLE notifications
- * on CUSTOM_STM_SD_CONTROL_POINT.
- *
- * Framing:
- *   Packet 1 : [0xF0][0x30][SUCCESS][total_len:u8][16 bytes payload]
- *   Packets 2+: [0xF1][seq:u8][up to 18 bytes payload]
- *
- * Payload (82 bytes, all little-endian):
- *   revision(u32)
- *   gnss_rate_ms / baro_odr / hum_odr / accel_odr / gyro_odr / mag_odr
- *     / ble_baro_div / ble_hum_div / ble_accel_div / ble_gyro_div / ble_mag_div
- *     / al_rate_ms    → each field: requested(u16) effective(u16) source(u8) = 5 bytes
- *   al_enabled(u8)
- *   ble_estimated_bytes_per_sec(u32)  ble_sensor_bytes_per_sec(u32)
- *   ble_activelook_bytes_per_sec(u32)  ble_budget_ok(u8)  warning_flags(u32)
- */
-#define CC_BLE_SNAPSHOT_LEN   82u
-#define CC_SNAP_FIRST_DATA    16u   /* payload bytes in packet 1 (after 4-byte header) */
-#define CC_SNAP_CONT_DATA     18u   /* payload bytes per continuation packet           */
 
-static void send_cc_snapshot(void)
-{
-    const CC_RuntimeConfig_t *cc = CC_Get();
-    uint8_t payload[CC_BLE_SNAPSHOT_LEN];
-    uint8_t *p = payload;
-
-#define PACK_U16(v) do { *p++ = (uint8_t)(v); *p++ = (uint8_t)((v) >> 8); } while (0)
-#define PACK_U32(v) do { *p++ = (uint8_t)(v);       *p++ = (uint8_t)((v) >> 8); \
-                         *p++ = (uint8_t)((v) >> 16); *p++ = (uint8_t)((v) >> 24); } while (0)
-#define PACK_FIELD(f) do { PACK_U16((f).requested); PACK_U16((f).effective); *p++ = (f).source; } while (0)
-
-    PACK_U32(cc->revision);
-    PACK_FIELD(cc->gnss_rate_ms);
-    PACK_FIELD(cc->baro_odr);
-    PACK_FIELD(cc->hum_odr);
-    PACK_FIELD(cc->accel_odr);
-    PACK_FIELD(cc->gyro_odr);
-    PACK_FIELD(cc->mag_odr);
-    PACK_FIELD(cc->ble_baro_divider);
-    PACK_FIELD(cc->ble_hum_divider);
-    PACK_FIELD(cc->ble_accel_divider);
-    PACK_FIELD(cc->ble_gyro_divider);
-    PACK_FIELD(cc->ble_mag_divider);
-    PACK_FIELD(cc->al_rate_ms);
-    *p++ = cc->al_enabled ? 1u : 0u;
-    PACK_U32(cc->ble_estimated_bytes_per_sec);
-    PACK_U32(cc->ble_sensor_bytes_per_sec);
-    PACK_U32(cc->ble_activelook_bytes_per_sec);
-    *p++ = cc->ble_budget_ok ? 1u : 0u;
-    PACK_U32(cc->warning_flags);
-
-#undef PACK_FIELD
-#undef PACK_U32
-#undef PACK_U16
-
-    /* First packet: 4-byte header + CC_SNAP_FIRST_DATA bytes of payload */
-    uint8_t pkt[20];
-    pkt[0] = CP_RESPONSE_ID;
-    pkt[1] = SD_CMD_GET_CURRENT_CONFIG;
-    pkt[2] = CP_STATUS_SUCCESS;
-    pkt[3] = (uint8_t)CC_BLE_SNAPSHOT_LEN;
-    memcpy(&pkt[4], &payload[0], CC_SNAP_FIRST_DATA);
-    BLE_TX_Queue_SendTxPacket(CUSTOM_STM_SD_CONTROL_POINT,
-                              pkt, 4u + CC_SNAP_FIRST_DATA,
-                              &SizeSd_Control_Point, 0);
-
-    /* Continuation packets: [0xF1][seq][up to CC_SNAP_CONT_DATA bytes] */
-    uint8_t offset = CC_SNAP_FIRST_DATA;
-    uint8_t seq    = 1u;
-    while (offset < CC_BLE_SNAPSHOT_LEN) {
-        uint8_t chunk = CC_BLE_SNAPSHOT_LEN - offset;
-        if (chunk > CC_SNAP_CONT_DATA) chunk = CC_SNAP_CONT_DATA;
-        pkt[0] = CP_CONTINUATION_ID;
-        pkt[1] = seq++;
-        memcpy(&pkt[2], &payload[offset], chunk);
-        BLE_TX_Queue_SendTxPacket(CUSTOM_STM_SD_CONTROL_POINT,
-                                  pkt, (uint8_t)(2u + chunk),
-                                  &SizeSd_Control_Point, 0);
-        offset += chunk;
-    }
-}
 
 void SensorData_Handle_SD_ControlPointWrite(
 		const uint8_t *payload, uint8_t length,
@@ -329,12 +249,77 @@ void SensorData_Handle_SD_ControlPointWrite(
                 }
                 break;
 
-            case SD_CMD_GET_CURRENT_CONFIG:
+            case SD_CMD_GET_SENSOR_ODRS:
                 if (params_len != 0) {
                     status = CP_STATUS_INVALID_PARAMETER;
-                } else if (notification_enabled_flag) {
-                    send_cc_snapshot();
-                    response_sent = true;
+                } else {
+                    const CC_RuntimeConfig_t *cc = CC_Get();
+                    response_data_buf[0] = (uint8_t)cc->baro_odr.effective;
+                    response_data_buf[1] = cc->baro_odr.source;
+                    response_data_buf[2] = (uint8_t)cc->hum_odr.effective;
+                    response_data_buf[3] = cc->hum_odr.source;
+                    response_data_buf[4] = (uint8_t)cc->accel_odr.effective;
+                    response_data_buf[5] = cc->accel_odr.source;
+                    response_data_buf[6] = (uint8_t)cc->gyro_odr.effective;
+                    response_data_buf[7] = cc->gyro_odr.source;
+                    response_data_buf[8] = (uint8_t)cc->mag_odr.effective;
+                    response_data_buf[9] = cc->mag_odr.source;
+                    response_data_len = 10;
+                    status = CP_STATUS_SUCCESS;
+                }
+                break;
+
+            case SD_CMD_GET_RATES:
+                if (params_len != 0) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    const CC_RuntimeConfig_t *cc = CC_Get();
+                    uint8_t *r = response_data_buf;
+                    /* GNSS rate: requested(2) effective(2) source(1) */
+                    *r++ = (uint8_t)cc->gnss_rate_ms.requested;
+                    *r++ = (uint8_t)(cc->gnss_rate_ms.requested >> 8);
+                    *r++ = (uint8_t)cc->gnss_rate_ms.effective;
+                    *r++ = (uint8_t)(cc->gnss_rate_ms.effective >> 8);
+                    *r++ = cc->gnss_rate_ms.source;
+                    /* AL rate: requested(2) effective(2) source(1) */
+                    *r++ = (uint8_t)cc->al_rate_ms.requested;
+                    *r++ = (uint8_t)(cc->al_rate_ms.requested >> 8);
+                    *r++ = (uint8_t)cc->al_rate_ms.effective;
+                    *r++ = (uint8_t)(cc->al_rate_ms.effective >> 8);
+                    *r++ = cc->al_rate_ms.source;
+                    /* al_enabled(1) */
+                    *r++ = cc->al_enabled ? 1u : 0u;
+                    response_data_len = 11;
+                    status = CP_STATUS_SUCCESS;
+                }
+                break;
+
+            case SD_CMD_GET_BLE_BUDGET:
+                if (params_len != 0) {
+                    status = CP_STATUS_INVALID_PARAMETER;
+                } else {
+                    const CC_RuntimeConfig_t *cc = CC_Get();
+                    uint8_t *r = response_data_buf;
+                    uint32_t v;
+                    /* ble_estimated_bps(4) */
+                    v = cc->ble_estimated_bytes_per_sec;
+                    *r++ = (uint8_t)v; *r++ = (uint8_t)(v >> 8);
+                    *r++ = (uint8_t)(v >> 16); *r++ = (uint8_t)(v >> 24);
+                    /* ble_sensor_bps(4) */
+                    v = cc->ble_sensor_bytes_per_sec;
+                    *r++ = (uint8_t)v; *r++ = (uint8_t)(v >> 8);
+                    *r++ = (uint8_t)(v >> 16); *r++ = (uint8_t)(v >> 24);
+                    /* ble_al_bps(4) */
+                    v = cc->ble_activelook_bytes_per_sec;
+                    *r++ = (uint8_t)v; *r++ = (uint8_t)(v >> 8);
+                    *r++ = (uint8_t)(v >> 16); *r++ = (uint8_t)(v >> 24);
+                    /* budget_ok(1) warning_flags(4) */
+                    *r++ = cc->ble_budget_ok ? 1u : 0u;
+                    v = cc->warning_flags;
+                    *r++ = (uint8_t)v; *r++ = (uint8_t)(v >> 8);
+                    *r++ = (uint8_t)(v >> 16); *r++ = (uint8_t)(v >> 24);
+                    response_data_len = 17;
+                    status = CP_STATUS_SUCCESS;
                 }
                 break;
 
