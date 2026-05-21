@@ -1,0 +1,531 @@
+================================================================================
+FUNCTION: MotionFX_MagCal_init  (lines 11117-11212, 96 lines)
+================================================================================
+00000000 <MotionFX_MagCal_init>:
+   0:	b570      	push	{r4, r5, r6, lr}
+   2:	4c42      	ldr	r4, [pc, #264]	@ (10c <MotionFX_MagCal_init+0x10c>)
+   4:	f894 33c4 	ldrb.w	r3, [r4, #964]	@ 0x3c4
+   8:	b903      	cbnz	r3, c <MotionFX_MagCal_init+0xc>
+   a:	bd70      	pop	{r4, r5, r6, pc}
+   c:	1e43      	subs	r3, r0, #1
+   e:	f5b3 7f7a 	cmp.w	r3, #1000	@ 0x3e8
+  12:	4605      	mov	r5, r0
+  14:	d2f9      	bcs.n	a <MotionFX_MagCal_init+0xa>
+  16:	2900      	cmp	r1, #0
+  18:	d139      	bne.n	8e <MotionFX_MagCal_init+0x8e>
+  1a:	f884 1048 	strb.w	r1, [r4, #72]	@ 0x48
+  1e:	f9b4 3002 	ldrsh.w	r3, [r4, #2]
+  22:	4a3b      	ldr	r2, [pc, #236]	@ (110 <MotionFX_MagCal_init+0x110>)
+  24:	1b5b      	subs	r3, r3, r5
+  26:	ee07 3a90 	vmov	s15, r3
+  2a:	eef8 7ae7 	vcvt.f32.s32	s15, s15
+  2e:	23c8      	movs	r3, #200	@ 0xc8
+  30:	eef0 7ae7 	vabs.f32	s15, s15
+  34:	fb93 f3f5 	sdiv	r3, r3, r5
+  38:	eeb7 7a00 	vmov.f32	s14, #112	@ 0x3f800000  1.0
+  3c:	b2db      	uxtb	r3, r3
+  3e:	2b0f      	cmp	r3, #15
+  40:	eef4 7ac7 	vcmpe.f32	s15, s14
+  44:	bf28      	it	cs
+  46:	230f      	movcs	r3, #15
+  48:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+  4c:	6015      	str	r5, [r2, #0]
+  4e:	f884 37de 	strb.w	r3, [r4, #2014]	@ 0x7de
+  52:	b22d      	sxth	r5, r5
+  54:	dc0e      	bgt.n	74 <MotionFX_MagCal_init+0x74>
+  56:	edd4 7a01 	vldr	s15, [r4, #4]
+  5a:	eddf 6a2e 	vldr	s13, [pc, #184]	@ 114 <MotionFX_MagCal_init+0x114>
+  5e:	ed9f 7a2e 	vldr	s14, [pc, #184]	@ 118 <MotionFX_MagCal_init+0x118>
+  62:	ee77 7ae6 	vsub.f32	s15, s15, s13
+  66:	eef0 7ae7 	vabs.f32	s15, s15
+  6a:	eef4 7ac7 	vcmpe.f32	s15, s14
+  6e:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+  72:	dd08      	ble.n	86 <MotionFX_MagCal_init+0x86>
+  74:	2300      	movs	r3, #0
+  76:	4a29      	ldr	r2, [pc, #164]	@ (11c <MotionFX_MagCal_init+0x11c>)
+  78:	8123      	strh	r3, [r4, #8]
+  7a:	f44f 6196 	mov.w	r1, #1200	@ 0x4b0
+  7e:	60e3      	str	r3, [r4, #12]
+  80:	8021      	strh	r1, [r4, #0]
+  82:	8065      	strh	r5, [r4, #2]
+  84:	6062      	str	r2, [r4, #4]
+  86:	2300      	movs	r3, #0
+  88:	f884 3858 	strb.w	r3, [r4, #2136]	@ 0x858
+  8c:	bd70      	pop	{r4, r5, r6, pc}
+  8e:	2600      	movs	r6, #0
+  90:	f44f 0302 	mov.w	r3, #8519680	@ 0x820000
+  94:	e9c4 3602 	strd	r3, r6, [r4, #8]
+  98:	f504 7372 	add.w	r3, r4, #968	@ 0x3c8
+  9c:	f44f 7248 	mov.w	r2, #800	@ 0x320
+  a0:	4631      	mov	r1, r6
+  a2:	6123      	str	r3, [r4, #16]
+  a4:	f104 00a0 	add.w	r0, r4, #160	@ 0xa0
+  a8:	f44f 737a 	mov.w	r3, #1000	@ 0x3e8
+  ac:	f8a4 3050 	strh.w	r3, [r4, #80]	@ 0x50
+  b0:	f884 6048 	strb.w	r6, [r4, #72]	@ 0x48
+  b4:	64e6      	str	r6, [r4, #76]	@ 0x4c
+  b6:	82a6      	strh	r6, [r4, #20]
+  b8:	f7ff fffe 	bl	0 <memset>
+  bc:	225f      	movs	r2, #95	@ 0x5f
+  be:	f884 20a1 	strb.w	r2, [r4, #161]	@ 0xa1
+  c2:	f44f 6270 	mov.w	r2, #3840	@ 0xf00
+  c6:	84a2      	strh	r2, [r4, #36]	@ 0x24
+  c8:	f44f 7280 	mov.w	r2, #256	@ 0x100
+  cc:	23ff      	movs	r3, #255	@ 0xff
+  ce:	f8a4 2054 	strh.w	r2, [r4, #84]	@ 0x54
+  d2:	4631      	mov	r1, r6
+  d4:	2230      	movs	r2, #48	@ 0x30
+  d6:	f104 006c 	add.w	r0, r4, #108	@ 0x6c
+  da:	f884 30a2 	strb.w	r3, [r4, #162]	@ 0xa2
+  de:	f884 3026 	strb.w	r3, [r4, #38]	@ 0x26
+  e2:	e9c4 6606 	strd	r6, r6, [r4, #24]
+  e6:	6226      	str	r6, [r4, #32]
+  e8:	f7ff fffe 	bl	0 <memset>
+  ec:	f1a5 030a 	sub.w	r3, r5, #10
+  f0:	b29b      	uxth	r3, r3
+  f2:	f04f 527e 	mov.w	r2, #1065353216	@ 0x3f800000
+  f6:	2101      	movs	r1, #1
+  f8:	2b32      	cmp	r3, #50	@ 0x32
+  fa:	f884 106d 	strb.w	r1, [r4, #109]	@ 0x6d
+  fe:	67e2      	str	r2, [r4, #124]	@ 0x7c
+ 100:	f8c4 208c 	str.w	r2, [r4, #140]	@ 0x8c
+ 104:	f8c4 209c 	str.w	r2, [r4, #156]	@ 0x9c
+ 108:	d889      	bhi.n	1e <MotionFX_MagCal_init+0x1e>
+ 10a:	e786      	b.n	1a <MotionFX_MagCal_init+0x1a>
+	...
+ 114:	3dcccccd 	.word	0x3dcccccd
+ 118:	3c23d70a 	.word	0x3c23d70a
+ 11c:	3dcccccd 	.word	0x3dcccccd
+
+
+================================================================================
+FUNCTION: MotionFX_MagCal_run  (lines 11215-11595, 381 lines)
+================================================================================
+00000000 <MotionFX_MagCal_run>:
+   0:	4940      	ldr	r1, [pc, #256]	@ (104 <MotionFX_MagCal_run+0x104>)
+   2:	f891 33c4 	ldrb.w	r3, [r1, #964]	@ 0x3c4
+   6:	2b00      	cmp	r3, #0
+   8:	d07b      	beq.n	102 <MotionFX_MagCal_run+0x102>
+   a:	ed90 7a00 	vldr	s14, [r0]
+   e:	eddf 7a3e 	vldr	s15, [pc, #248]	@ 108 <MotionFX_MagCal_run+0x108>
+  12:	eeb5 7ac0 	vcmpe.f32	s14, #0.0
+  16:	ee67 7a27 	vmul.f32	s15, s14, s15
+  1a:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+  1e:	eeb6 7a00 	vmov.f32	s14, #96	@ 0x3f000000  0.5
+  22:	bfb4      	ite	lt
+  24:	ee77 7ac7 	vsublt.f32	s15, s15, s14
+  28:	ee77 7a87 	vaddge.f32	s15, s15, s14
+  2c:	ed90 7a01 	vldr	s14, [r0, #4]
+  30:	eefd 7ae7 	vcvt.s32.f32	s15, s15
+  34:	eeb5 7ac0 	vcmpe.f32	s14, #0.0
+  38:	ee17 ca90 	vmov	ip, s15
+  3c:	eddf 7a32 	vldr	s15, [pc, #200]	@ 108 <MotionFX_MagCal_run+0x108>
+  40:	ee67 7a27 	vmul.f32	s15, s14, s15
+  44:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+  48:	eeb6 7a00 	vmov.f32	s14, #96	@ 0x3f000000  0.5
+  4c:	bfb4      	ite	lt
+  4e:	ee77 7ac7 	vsublt.f32	s15, s15, s14
+  52:	ee77 7a87 	vaddge.f32	s15, s15, s14
+  56:	e92d 43f0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, lr}
+  5a:	eefd 7ae7 	vcvt.s32.f32	s15, s15
+  5e:	ed90 7a02 	vldr	s14, [r0, #8]
+  62:	f891 3858 	ldrb.w	r3, [r1, #2136]	@ 0x858
+  66:	68c0      	ldr	r0, [r0, #12]
+  68:	ee17 2a90 	vmov	r2, s15
+  6c:	eddf 7a26 	vldr	s15, [pc, #152]	@ 108 <MotionFX_MagCal_run+0x108>
+  70:	eeb5 7ac0 	vcmpe.f32	s14, #0.0
+  74:	ee67 7a27 	vmul.f32	s15, s14, s15
+  78:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+  7c:	eeb6 7a00 	vmov.f32	s14, #96	@ 0x3f000000  0.5
+  80:	bfac      	ite	ge
+  82:	ee77 7a87 	vaddge.f32	s15, s15, s14
+  86:	ee77 7ac7 	vsublt.f32	s15, s15, s14
+  8a:	eefd 7ae7 	vcvt.s32.f32	s15, s15
+  8e:	b38b      	cbz	r3, f4 <MotionFX_MagCal_run+0xf4>
+  90:	481e      	ldr	r0, [pc, #120]	@ (10c <MotionFX_MagCal_run+0x10c>)
+  92:	6800      	ldr	r0, [r0, #0]
+  94:	eb01 04c3 	add.w	r4, r1, r3, lsl #3
+  98:	fb10 f003 	smulbb	r0, r0, r3
+  9c:	f8a4 07e0 	strh.w	r0, [r4, #2016]	@ 0x7e0
+  a0:	00d8      	lsls	r0, r3, #3
+  a2:	f647 74fe 	movw	r4, #32766	@ 0x7ffe
+  a6:	ee17 5a90 	vmov	r5, s15
+  aa:	4f19      	ldr	r7, [pc, #100]	@ (110 <MotionFX_MagCal_run+0x110>)
+  ac:	45a4      	cmp	ip, r4
+  ae:	4666      	mov	r6, ip
+  b0:	bfa8      	it	ge
+  b2:	4626      	movge	r6, r4
+  b4:	42a5      	cmp	r5, r4
+  b6:	bfa8      	it	ge
+  b8:	4625      	movge	r5, r4
+  ba:	42be      	cmp	r6, r7
+  bc:	bfb8      	it	lt
+  be:	463e      	movlt	r6, r7
+  c0:	42ba      	cmp	r2, r7
+  c2:	db02      	blt.n	ca <MotionFX_MagCal_run+0xca>
+  c4:	4294      	cmp	r4, r2
+  c6:	bfa8      	it	ge
+  c8:	4614      	movge	r4, r2
+  ca:	180a      	adds	r2, r1, r0
+  cc:	4810      	ldr	r0, [pc, #64]	@ (110 <MotionFX_MagCal_run+0x110>)
+  ce:	f8a2 67e2 	strh.w	r6, [r2, #2018]	@ 0x7e2
+  d2:	42a8      	cmp	r0, r5
+  d4:	bfb8      	it	lt
+  d6:	4628      	movlt	r0, r5
+  d8:	3301      	adds	r3, #1
+  da:	f891 57de 	ldrb.w	r5, [r1, #2014]	@ 0x7de
+  de:	f8a2 47e4 	strh.w	r4, [r2, #2020]	@ 0x7e4
+  e2:	b2db      	uxtb	r3, r3
+  e4:	42ab      	cmp	r3, r5
+  e6:	f881 3858 	strb.w	r3, [r1, #2136]	@ 0x858
+  ea:	f8a2 07e6 	strh.w	r0, [r2, #2022]	@ 0x7e6
+  ee:	d011      	beq.n	114 <MotionFX_MagCal_run+0x114>
+  f0:	e8bd 83f0 	ldmia.w	sp!, {r4, r5, r6, r7, r8, r9, pc}
+  f4:	f8c1 07d8 	str.w	r0, [r1, #2008]	@ 0x7d8
+  f8:	2001      	movs	r0, #1
+  fa:	f881 07dc 	strb.w	r0, [r1, #2012]	@ 0x7dc
+  fe:	4618      	mov	r0, r3
+ 100:	e7cf      	b.n	a2 <MotionFX_MagCal_run+0xa2>
+ 102:	4770      	bx	lr
+ 104:	00000000 	.word	0x00000000
+ 108:	43fa0000 	.word	0x43fa0000
+ 10c:	00000000 	.word	0x00000000
+ 110:	ffff8002 	.word	0xffff8002
+ 114:	f891 37dc 	ldrb.w	r3, [r1, #2012]	@ 0x7dc
+ 118:	f8d1 77d8 	ldr.w	r7, [r1, #2008]	@ 0x7d8
+ 11c:	2200      	movs	r2, #0
+ 11e:	f881 2858 	strb.w	r2, [r1, #2136]	@ 0x858
+ 122:	2b00      	cmp	r3, #0
+ 124:	f000 8169 	beq.w	3fa <MotionFX_MagCal_run+0x3fa>
+ 128:	2d00      	cmp	r5, #0
+ 12a:	f000 8166 	beq.w	3fa <MotionFX_MagCal_run+0x3fa>
+ 12e:	894e      	ldrh	r6, [r1, #10]
+ 130:	2e00      	cmp	r6, #0
+ 132:	f000 8162 	beq.w	3fa <MotionFX_MagCal_run+0x3fa>
+ 136:	890b      	ldrh	r3, [r1, #8]
+ 138:	690c      	ldr	r4, [r1, #16]
+ 13a:	42b3      	cmp	r3, r6
+ 13c:	bf28      	it	cs
+ 13e:	4633      	movcs	r3, r6
+ 140:	3301      	adds	r3, #1
+ 142:	b29b      	uxth	r3, r3
+ 144:	42b3      	cmp	r3, r6
+ 146:	bf28      	it	cs
+ 148:	4633      	movcs	r3, r6
+ 14a:	f06f 4860 	mvn.w	r8, #3758096384	@ 0xe0000000
+ 14e:	eb03 0208 	add.w	r2, r3, r8
+ 152:	f04f 0901 	mov.w	r9, #1
+ 156:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 15a:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 15e:	f8d1 c7e2 	ldr.w	ip, [r1, #2018]	@ 0x7e2
+ 162:	f8c2 c002 	str.w	ip, [r2, #2]
+ 166:	f9b1 07e6 	ldrsh.w	r0, [r1, #2022]	@ 0x7e6
+ 16a:	f8b1 e7e0 	ldrh.w	lr, [r1, #2016]	@ 0x7e0
+ 16e:	80d0      	strh	r0, [r2, #6]
+ 170:	454d      	cmp	r5, r9
+ 172:	f000 813a 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 176:	444b      	add	r3, r9
+ 178:	b29b      	uxth	r3, r3
+ 17a:	42b3      	cmp	r3, r6
+ 17c:	bf28      	it	cs
+ 17e:	4633      	movcs	r3, r6
+ 180:	eb03 0208 	add.w	r2, r3, r8
+ 184:	2d02      	cmp	r5, #2
+ 186:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 18a:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 18e:	f8d1 c7ea 	ldr.w	ip, [r1, #2026]	@ 0x7ea
+ 192:	f8c2 c002 	str.w	ip, [r2, #2]
+ 196:	f9b1 07ee 	ldrsh.w	r0, [r1, #2030]	@ 0x7ee
+ 19a:	f8b1 e7e8 	ldrh.w	lr, [r1, #2024]	@ 0x7e8
+ 19e:	80d0      	strh	r0, [r2, #6]
+ 1a0:	f000 8123 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 1a4:	444b      	add	r3, r9
+ 1a6:	b29b      	uxth	r3, r3
+ 1a8:	42b3      	cmp	r3, r6
+ 1aa:	bf28      	it	cs
+ 1ac:	4633      	movcs	r3, r6
+ 1ae:	eb03 0208 	add.w	r2, r3, r8
+ 1b2:	2d03      	cmp	r5, #3
+ 1b4:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 1b8:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 1bc:	f8d1 c7f2 	ldr.w	ip, [r1, #2034]	@ 0x7f2
+ 1c0:	f8c2 c002 	str.w	ip, [r2, #2]
+ 1c4:	f9b1 07f6 	ldrsh.w	r0, [r1, #2038]	@ 0x7f6
+ 1c8:	f8b1 e7f0 	ldrh.w	lr, [r1, #2032]	@ 0x7f0
+ 1cc:	80d0      	strh	r0, [r2, #6]
+ 1ce:	f000 810c 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 1d2:	444b      	add	r3, r9
+ 1d4:	b29b      	uxth	r3, r3
+ 1d6:	42b3      	cmp	r3, r6
+ 1d8:	bf28      	it	cs
+ 1da:	4633      	movcs	r3, r6
+ 1dc:	eb03 0208 	add.w	r2, r3, r8
+ 1e0:	2d04      	cmp	r5, #4
+ 1e2:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 1e6:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 1ea:	f8d1 c7fa 	ldr.w	ip, [r1, #2042]	@ 0x7fa
+ 1ee:	f8c2 c002 	str.w	ip, [r2, #2]
+ 1f2:	f9b1 07fe 	ldrsh.w	r0, [r1, #2046]	@ 0x7fe
+ 1f6:	f8b1 e7f8 	ldrh.w	lr, [r1, #2040]	@ 0x7f8
+ 1fa:	80d0      	strh	r0, [r2, #6]
+ 1fc:	f000 80f5 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 200:	444b      	add	r3, r9
+ 202:	b29b      	uxth	r3, r3
+ 204:	42b3      	cmp	r3, r6
+ 206:	bf28      	it	cs
+ 208:	4633      	movcs	r3, r6
+ 20a:	eb03 0208 	add.w	r2, r3, r8
+ 20e:	2d05      	cmp	r5, #5
+ 210:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 214:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 218:	f8d1 c802 	ldr.w	ip, [r1, #2050]	@ 0x802
+ 21c:	f8c2 c002 	str.w	ip, [r2, #2]
+ 220:	f9b1 0806 	ldrsh.w	r0, [r1, #2054]	@ 0x806
+ 224:	f8b1 e800 	ldrh.w	lr, [r1, #2048]	@ 0x800
+ 228:	80d0      	strh	r0, [r2, #6]
+ 22a:	f000 80de 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 22e:	444b      	add	r3, r9
+ 230:	b29b      	uxth	r3, r3
+ 232:	42b3      	cmp	r3, r6
+ 234:	bf28      	it	cs
+ 236:	4633      	movcs	r3, r6
+ 238:	4498      	add	r8, r3
+ 23a:	eb04 02c8 	add.w	r2, r4, r8, lsl #3
+ 23e:	f804 9038 	strb.w	r9, [r4, r8, lsl #3]
+ 242:	f8d1 c80a 	ldr.w	ip, [r1, #2058]	@ 0x80a
+ 246:	f8c2 c002 	str.w	ip, [r2, #2]
+ 24a:	f9b1 080e 	ldrsh.w	r0, [r1, #2062]	@ 0x80e
+ 24e:	f8b1 e808 	ldrh.w	lr, [r1, #2056]	@ 0x808
+ 252:	80d0      	strh	r0, [r2, #6]
+ 254:	2d06      	cmp	r5, #6
+ 256:	f000 80c8 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 25a:	444b      	add	r3, r9
+ 25c:	b29b      	uxth	r3, r3
+ 25e:	42b3      	cmp	r3, r6
+ 260:	bf28      	it	cs
+ 262:	4633      	movcs	r3, r6
+ 264:	f06f 4860 	mvn.w	r8, #3758096384	@ 0xe0000000
+ 268:	eb03 0208 	add.w	r2, r3, r8
+ 26c:	2d07      	cmp	r5, #7
+ 26e:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 272:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 276:	f8d1 c812 	ldr.w	ip, [r1, #2066]	@ 0x812
+ 27a:	f8c2 c002 	str.w	ip, [r2, #2]
+ 27e:	f9b1 0816 	ldrsh.w	r0, [r1, #2070]	@ 0x816
+ 282:	f8b1 e810 	ldrh.w	lr, [r1, #2064]	@ 0x810
+ 286:	80d0      	strh	r0, [r2, #6]
+ 288:	f000 80af 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 28c:	444b      	add	r3, r9
+ 28e:	b29b      	uxth	r3, r3
+ 290:	42b3      	cmp	r3, r6
+ 292:	bf28      	it	cs
+ 294:	4633      	movcs	r3, r6
+ 296:	eb03 0208 	add.w	r2, r3, r8
+ 29a:	2d08      	cmp	r5, #8
+ 29c:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 2a0:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 2a4:	f8d1 c81a 	ldr.w	ip, [r1, #2074]	@ 0x81a
+ 2a8:	f8c2 c002 	str.w	ip, [r2, #2]
+ 2ac:	f9b1 081e 	ldrsh.w	r0, [r1, #2078]	@ 0x81e
+ 2b0:	f8b1 e818 	ldrh.w	lr, [r1, #2072]	@ 0x818
+ 2b4:	80d0      	strh	r0, [r2, #6]
+ 2b6:	f000 8098 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 2ba:	444b      	add	r3, r9
+ 2bc:	b29b      	uxth	r3, r3
+ 2be:	42b3      	cmp	r3, r6
+ 2c0:	bf28      	it	cs
+ 2c2:	4633      	movcs	r3, r6
+ 2c4:	eb03 0208 	add.w	r2, r3, r8
+ 2c8:	2d09      	cmp	r5, #9
+ 2ca:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 2ce:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 2d2:	f8d1 c822 	ldr.w	ip, [r1, #2082]	@ 0x822
+ 2d6:	f8c2 c002 	str.w	ip, [r2, #2]
+ 2da:	f9b1 0826 	ldrsh.w	r0, [r1, #2086]	@ 0x826
+ 2de:	f8b1 e820 	ldrh.w	lr, [r1, #2080]	@ 0x820
+ 2e2:	80d0      	strh	r0, [r2, #6]
+ 2e4:	f000 8081 	beq.w	3ea <MotionFX_MagCal_run+0x3ea>
+ 2e8:	444b      	add	r3, r9
+ 2ea:	b29b      	uxth	r3, r3
+ 2ec:	42b3      	cmp	r3, r6
+ 2ee:	bf28      	it	cs
+ 2f0:	4633      	movcs	r3, r6
+ 2f2:	eb03 0208 	add.w	r2, r3, r8
+ 2f6:	2d0a      	cmp	r5, #10
+ 2f8:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 2fc:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 300:	f8d1 c82a 	ldr.w	ip, [r1, #2090]	@ 0x82a
+ 304:	f8c2 c002 	str.w	ip, [r2, #2]
+ 308:	f9b1 082e 	ldrsh.w	r0, [r1, #2094]	@ 0x82e
+ 30c:	f8b1 e828 	ldrh.w	lr, [r1, #2088]	@ 0x828
+ 310:	80d0      	strh	r0, [r2, #6]
+ 312:	d06a      	beq.n	3ea <MotionFX_MagCal_run+0x3ea>
+ 314:	444b      	add	r3, r9
+ 316:	b29b      	uxth	r3, r3
+ 318:	42b3      	cmp	r3, r6
+ 31a:	bf28      	it	cs
+ 31c:	4633      	movcs	r3, r6
+ 31e:	eb03 0208 	add.w	r2, r3, r8
+ 322:	2d0b      	cmp	r5, #11
+ 324:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 328:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 32c:	f8d1 c832 	ldr.w	ip, [r1, #2098]	@ 0x832
+ 330:	f8c2 c002 	str.w	ip, [r2, #2]
+ 334:	f9b1 0836 	ldrsh.w	r0, [r1, #2102]	@ 0x836
+ 338:	f8b1 e830 	ldrh.w	lr, [r1, #2096]	@ 0x830
+ 33c:	80d0      	strh	r0, [r2, #6]
+ 33e:	d054      	beq.n	3ea <MotionFX_MagCal_run+0x3ea>
+ 340:	444b      	add	r3, r9
+ 342:	b29b      	uxth	r3, r3
+ 344:	42b3      	cmp	r3, r6
+ 346:	bf28      	it	cs
+ 348:	4633      	movcs	r3, r6
+ 34a:	eb03 0208 	add.w	r2, r3, r8
+ 34e:	2d0c      	cmp	r5, #12
+ 350:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 354:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 358:	f8d1 c83a 	ldr.w	ip, [r1, #2106]	@ 0x83a
+ 35c:	f8c2 c002 	str.w	ip, [r2, #2]
+ 360:	f9b1 083e 	ldrsh.w	r0, [r1, #2110]	@ 0x83e
+ 364:	f8b1 e838 	ldrh.w	lr, [r1, #2104]	@ 0x838
+ 368:	80d0      	strh	r0, [r2, #6]
+ 36a:	d03e      	beq.n	3ea <MotionFX_MagCal_run+0x3ea>
+ 36c:	444b      	add	r3, r9
+ 36e:	b29b      	uxth	r3, r3
+ 370:	42b3      	cmp	r3, r6
+ 372:	bf28      	it	cs
+ 374:	4633      	movcs	r3, r6
+ 376:	eb03 0208 	add.w	r2, r3, r8
+ 37a:	2d0d      	cmp	r5, #13
+ 37c:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 380:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 384:	f8d1 c842 	ldr.w	ip, [r1, #2114]	@ 0x842
+ 388:	f8c2 c002 	str.w	ip, [r2, #2]
+ 38c:	f9b1 0846 	ldrsh.w	r0, [r1, #2118]	@ 0x846
+ 390:	f8b1 e840 	ldrh.w	lr, [r1, #2112]	@ 0x840
+ 394:	80d0      	strh	r0, [r2, #6]
+ 396:	d028      	beq.n	3ea <MotionFX_MagCal_run+0x3ea>
+ 398:	444b      	add	r3, r9
+ 39a:	b29b      	uxth	r3, r3
+ 39c:	42b3      	cmp	r3, r6
+ 39e:	bf28      	it	cs
+ 3a0:	4633      	movcs	r3, r6
+ 3a2:	eb03 0208 	add.w	r2, r3, r8
+ 3a6:	2d0e      	cmp	r5, #14
+ 3a8:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 3ac:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 3b0:	f8d1 c84a 	ldr.w	ip, [r1, #2122]	@ 0x84a
+ 3b4:	f8c2 c002 	str.w	ip, [r2, #2]
+ 3b8:	f9b1 084e 	ldrsh.w	r0, [r1, #2126]	@ 0x84e
+ 3bc:	f8b1 e848 	ldrh.w	lr, [r1, #2120]	@ 0x848
+ 3c0:	80d0      	strh	r0, [r2, #6]
+ 3c2:	d012      	beq.n	3ea <MotionFX_MagCal_run+0x3ea>
+ 3c4:	444b      	add	r3, r9
+ 3c6:	b29b      	uxth	r3, r3
+ 3c8:	42b3      	cmp	r3, r6
+ 3ca:	bf28      	it	cs
+ 3cc:	4633      	movcs	r3, r6
+ 3ce:	4498      	add	r8, r3
+ 3d0:	eb04 02c8 	add.w	r2, r4, r8, lsl #3
+ 3d4:	f804 9038 	strb.w	r9, [r4, r8, lsl #3]
+ 3d8:	f8d1 c852 	ldr.w	ip, [r1, #2130]	@ 0x852
+ 3dc:	f8c2 c002 	str.w	ip, [r2, #2]
+ 3e0:	f9b1 0856 	ldrsh.w	r0, [r1, #2134]	@ 0x856
+ 3e4:	f8b1 e850 	ldrh.w	lr, [r1, #2128]	@ 0x850
+ 3e8:	80d0      	strh	r0, [r2, #6]
+ 3ea:	810b      	strh	r3, [r1, #8]
+ 3ec:	4477      	add	r7, lr
+ 3ee:	2301      	movs	r3, #1
+ 3f0:	f8c2 c002 	str.w	ip, [r2, #2]
+ 3f4:	80d0      	strh	r0, [r2, #6]
+ 3f6:	7013      	strb	r3, [r2, #0]
+ 3f8:	60cf      	str	r7, [r1, #12]
+ 3fa:	f891 3048 	ldrb.w	r3, [r1, #72]	@ 0x48
+ 3fe:	2b00      	cmp	r3, #0
+ 400:	f43f ae76 	beq.w	f0 <MotionFX_MagCal_run+0xf0>
+ 404:	890a      	ldrh	r2, [r1, #8]
+ 406:	894b      	ldrh	r3, [r1, #10]
+ 408:	4293      	cmp	r3, r2
+ 40a:	d022      	beq.n	452 <MotionFX_MagCal_run+0x452>
+ 40c:	b32a      	cbz	r2, 45a <MotionFX_MagCal_run+0x45a>
+ 40e:	68cb      	ldr	r3, [r1, #12]
+ 410:	f9b1 0002 	ldrsh.w	r0, [r1, #2]
+ 414:	3301      	adds	r3, #1
+ 416:	4403      	add	r3, r0
+ 418:	1c58      	adds	r0, r3, #1
+ 41a:	d01e      	beq.n	45a <MotionFX_MagCal_run+0x45a>
+ 41c:	f503 541c 	add.w	r4, r3, #9984	@ 0x2700
+ 420:	3410      	adds	r4, #16
+ 422:	6cc8      	ldr	r0, [r1, #76]	@ 0x4c
+ 424:	42a0      	cmp	r0, r4
+ 426:	f8b1 4050 	ldrh.w	r4, [r1, #80]	@ 0x50
+ 42a:	bf84      	itt	hi
+ 42c:	64cb      	strhi	r3, [r1, #76]	@ 0x4c
+ 42e:	4618      	movhi	r0, r3
+ 430:	4420      	add	r0, r4
+ 432:	4283      	cmp	r3, r0
+ 434:	f4ff ae5c 	bcc.w	f0 <MotionFX_MagCal_run+0xf0>
+ 438:	b132      	cbz	r2, 448 <MotionFX_MagCal_run+0x448>
+ 43a:	f9b1 0002 	ldrsh.w	r0, [r1, #2]
+ 43e:	68c9      	ldr	r1, [r1, #12]
+ 440:	3a01      	subs	r2, #1
+ 442:	fb00 1212 	mls	r2, r0, r2, r1
+ 446:	b292      	uxth	r2, r2
+ 448:	1a9b      	subs	r3, r3, r2
+ 44a:	b21b      	sxth	r3, r3
+ 44c:	42a3      	cmp	r3, r4
+ 44e:	f6ff ae4f 	blt.w	f0 <MotionFX_MagCal_run+0xf0>
+ 452:	e8bd 43f0 	ldmia.w	sp!, {r4, r5, r6, r7, r8, r9, lr}
+ 456:	f7ff bffe 	b.w	0 <MotionFX_MagCal_run>
+ 45a:	f242 7410 	movw	r4, #10000	@ 0x2710
+ 45e:	2300      	movs	r3, #0
+ 460:	e7df      	b.n	422 <MotionFX_MagCal_run+0x422>
+ 462:	bf00      	nop
+
+
+================================================================================
+FUNCTION: MotionFX_MagCal_getParams  (lines 11598-11639, 42 lines)
+================================================================================
+00000000 <MotionFX_MagCal_getParams>:
+   0:	4b20      	ldr	r3, [pc, #128]	@ (84 <MotionFX_MagCal_getParams+0x84>)
+   2:	f893 23c4 	ldrb.w	r2, [r3, #964]	@ 0x3c4
+   6:	b902      	cbnz	r2, a <MotionFX_MagCal_getParams+0xa>
+   8:	4770      	bx	lr
+   a:	b530      	push	{r4, r5, lr}
+   c:	f103 0e6c 	add.w	lr, r3, #108	@ 0x6c
+  10:	4604      	mov	r4, r0
+  12:	f893 506c 	ldrb.w	r5, [r3, #108]	@ 0x6c
+  16:	ed9f 6a1c 	vldr	s12, [pc, #112]	@ 88 <MotionFX_MagCal_getParams+0x88>
+  1a:	e8be 000f 	ldmia.w	lr!, {r0, r1, r2, r3}
+  1e:	b08f      	sub	sp, #60	@ 0x3c
+  20:	f10d 0c04 	add.w	ip, sp, #4
+  24:	e8ac 000f 	stmia.w	ip!, {r0, r1, r2, r3}
+  28:	e8be 000f 	ldmia.w	lr!, {r0, r1, r2, r3}
+  2c:	e8ac 000f 	stmia.w	ip!, {r0, r1, r2, r3}
+  30:	e8be 000f 	ldmia.w	lr!, {r0, r1, r2, r3}
+  34:	eddd 6a02 	vldr	s13, [sp, #8]
+  38:	ed9d 7a03 	vldr	s14, [sp, #12]
+  3c:	eddd 7a04 	vldr	s15, [sp, #16]
+  40:	eefd 6ae6 	vcvt.s32.f32	s13, s13
+  44:	eebd 7ac7 	vcvt.s32.f32	s14, s14
+  48:	eefd 7ae7 	vcvt.s32.f32	s15, s15
+  4c:	e8ac 000f 	stmia.w	ip!, {r0, r1, r2, r3}
+  50:	eef8 6ae6 	vcvt.f32.s32	s13, s13
+  54:	eeb8 7ac7 	vcvt.f32.s32	s14, s14
+  58:	eef8 7ae7 	vcvt.f32.s32	s15, s15
+  5c:	f8de 3000 	ldr.w	r3, [lr]
+  60:	7325      	strb	r5, [r4, #12]
+  62:	ee66 6a86 	vmul.f32	s13, s13, s12
+  66:	ee27 7a06 	vmul.f32	s14, s14, s12
+  6a:	ee67 7a86 	vmul.f32	s15, s15, s12
+  6e:	edc4 6a00 	vstr	s13, [r4]
+  72:	f8cc 3000 	str.w	r3, [ip]
+  76:	ed84 7a01 	vstr	s14, [r4, #4]
+  7a:	edc4 7a02 	vstr	s15, [r4, #8]
+  7e:	b00f      	add	sp, #60	@ 0x3c
+  80:	bd30      	pop	{r4, r5, pc}
+  82:	bf00      	nop
+  84:	00000000 	.word	0x00000000
+  88:	3b03126f 	.word	0x3b03126f
+
+

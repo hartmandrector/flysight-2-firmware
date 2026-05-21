@@ -46,6 +46,7 @@
 #include "gyro_ble.h"
 #include "mag_ble.h"
 #include "fusion_integration.h"
+#include "mag_cal.h"
 
 #define LED_BLINK_MSEC      900
 #define LED_BLINK_TICKS     (LED_BLINK_MSEC*1000/CFG_TS_TICK_VAL)
@@ -108,6 +109,9 @@ void FS_ActiveControl_Init(void)
 	// Initialize sensor fusion
 	FS_Fusion_Init();
 	FS_Fusion_Start();
+
+	// Initialize magnetometer hard iron calibration
+	MagCal_Init();
 }
 
 void FS_ActiveControl_DeInit(void)
@@ -178,6 +182,9 @@ void FS_Mag_DataReady_Callback(void)
 		FS_Log_WriteMagData(data);
 	}
 	
+	// Update magnetometer hard iron calibration (raw sensor-frame values)
+	MagCal_Update(data->x, data->y, data->z);
+
 	// Update sensor fusion
 	FS_Fusion_UpdateMag(data->x, data->y, data->z);
 
