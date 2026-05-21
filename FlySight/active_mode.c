@@ -79,9 +79,6 @@ void FS_ActiveMode_Init(void)
 	/* Seed runtime configuration from file config */
 	CC_Init(FS_Config_Get());
 
-	/* Apply computed BLE dividers to streaming modules */
-	CC_ApplyBleDividers();
-
 	/* Validate BLE configuration */
 	{
 		const CC_RuntimeConfig_t *cc = CC_Get();

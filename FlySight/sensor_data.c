@@ -96,14 +96,9 @@ void SensorData_Handle_SD_ControlPointWrite(
                 } else {
                     uint8_t sensor_id = params[0];
                     uint16_t divider = params[1] | (params[2] << 8); // Little-endian
-                    /* CC_SetBleDivider validates sensor_id, updates requested value,
-                     * recomputes budget (recalculating all auto dividers), and
-                     * increments revision. Then we apply all effective dividers to
-                     * the BLE streaming modules so auto peers update too. */
                     if (!CC_SetBleDivider(sensor_id, divider, CC_SRC_CONTROL_POINT)) {
                         status = CP_STATUS_INVALID_PARAMETER;
                     } else {
-                        CC_ApplyBleDividers();
                         status = CP_STATUS_SUCCESS;
                     }
                 }
@@ -168,9 +163,6 @@ void SensorData_Handle_SD_ControlPointWrite(
                     } else if (FS_GNSS_SetRateMs(rate_ms) != HAL_OK) {
                         status = CP_STATUS_OPERATION_FAILED;
                     } else {
-                        /* GNSS rate change recomputes auto dividers in CC;
-                         * propagate updated effective values to BLE modules. */
-                        CC_ApplyBleDividers();
                         status = CP_STATUS_SUCCESS;
                     }
                 }

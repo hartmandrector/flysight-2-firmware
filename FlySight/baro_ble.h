@@ -27,7 +27,6 @@
 #include <stdint.h>
 #include "stm32wbxx_hal.h"
 #include "baro.h"
-#include "config.h"
 
 /* ------------------------------------------------------------------ */
 /* Packet layout control                                              */
@@ -45,7 +44,7 @@
 /* ------------------------------------------------------------------ */
 /* Public API                                                         */
 /* ------------------------------------------------------------------ */
-void     BARO_BLE_Init(const FS_Config_Data_t *config);
+void     BARO_BLE_Init(void);
 uint8_t  BARO_BLE_GetMask(void);
 void     BARO_BLE_SetMask(uint8_t mask);
 uint16_t BARO_BLE_GetDivider(void);

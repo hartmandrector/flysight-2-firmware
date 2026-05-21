@@ -74,8 +74,6 @@ static void FS_ActiveControl_LED_Timer(void)
 
 void FS_ActiveControl_Init(void)
 {
-	const FS_Config_Data_t *config = FS_Config_Get();
-	
 	// Set callback functions
 	FS_GNSS_DataReady_SetCallback(FS_ActiveControl_DataReady_Callback);
 	FS_GNSS_TimeReady_SetCallback(FS_ActiveControl_TimeReady_Callback);
@@ -100,12 +98,12 @@ void FS_ActiveControl_Init(void)
 	// Initialize saved GNSS time
 	memset(&savedTime, 0, sizeof(FS_GNSS_Time_t));
 	
-	// Initialize BLE sensor modules with configuration
-	BARO_BLE_Init(config);
-	HUM_BLE_Init(config);
-	ACCEL_BLE_Init(config);
-	GYRO_BLE_Init(config);
-	MAG_BLE_Init(config);
+	// Initialize BLE sensor modules
+	BARO_BLE_Init();
+	HUM_BLE_Init();
+	ACCEL_BLE_Init();
+	GYRO_BLE_Init();
+	MAG_BLE_Init();
 	
 	// Initialize sensor fusion
 	FS_Fusion_Init();

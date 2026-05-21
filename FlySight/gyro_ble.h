@@ -27,7 +27,6 @@
 #include <stdint.h>
 #include "stm32wbxx_hal.h"
 #include "imu.h"
-#include "config.h"
 
 /* ------------------------------------------------------------------ */
 /* Packet layout control                                              */
@@ -46,7 +45,7 @@
 /* ------------------------------------------------------------------ */
 /* Public API                                                         */
 /* ------------------------------------------------------------------ */
-void     GYRO_BLE_Init(const FS_Config_Data_t *config);
+void     GYRO_BLE_Init(void);
 uint8_t  GYRO_BLE_GetMask(void);
 void     GYRO_BLE_SetMask(uint8_t mask);
 uint16_t GYRO_BLE_GetDivider(void);

@@ -29,12 +29,10 @@
 static uint8_t  s_mask = HUM_BLE_DEFAULT_MASK;
 static uint16_t s_divider = 1u;  /* 1 = every sample, 2 = every 2nd sample, etc. */
 
-void HUM_BLE_Init(const FS_Config_Data_t *config)
+void HUM_BLE_Init(void)
 {
-    s_mask = HUM_BLE_DEFAULT_MASK;
-    s_divider = (config->ble_hum_divider != 0u) ? config->ble_hum_divider : 1u;
-    /* Note: auto divider (0 in config) will be set correctly by CC_ApplyBleDividers()
-     * called after CC_Init() in active_mode. */
+    s_mask    = HUM_BLE_DEFAULT_MASK;
+    s_divider = 1u;
 }
 
 uint8_t HUM_BLE_GetMask(void)

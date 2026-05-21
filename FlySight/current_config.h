@@ -153,9 +153,4 @@ bool CC_SetAlEnabled(bool enabled, CC_Source_t source);
  * Useful after enable flags change. */
 void CC_RecomputeBudget(void);
 
-/* Apply all effective BLE dividers from CC to the *_ble streaming modules.
- * Must be called once after CC_Init() and after any mutation that changes
- * effective dividers (GNSS rate, per-sensor divider). */
-void CC_ApplyBleDividers(void);
-
 #endif /* CURRENT_CONFIG_H_ */

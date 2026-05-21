@@ -70,6 +70,8 @@ static void cc_notify(void)
     cc_runtime.revision++;
 }
 
+static void CC_ApplyBleDividers(void); /* forward declaration */
+
 /* ── BLE budget recomputation ───────────────────────────────────────────── */
 /*
  * Implements the priority-based algorithm from CURRENT_CONFIG_DESIGN.md:
@@ -236,6 +238,8 @@ void CC_RecomputeBudget(void)
         cc_runtime.warning_flags |= CC_WARN_AL_HIGH_BW;
     else
         cc_runtime.warning_flags &= ~CC_WARN_AL_HIGH_BW;
+
+    CC_ApplyBleDividers();
 }
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */
@@ -425,7 +429,7 @@ bool CC_SetAlEnabled(bool enabled, CC_Source_t source)
 }
 /* ── BLE divider application ──────────────────────────────────────────────── */
 
-void CC_ApplyBleDividers(void)
+static void CC_ApplyBleDividers(void)
 {
     BARO_BLE_SetDivider(cc_runtime.ble_baro_divider.effective);
     HUM_BLE_SetDivider(cc_runtime.ble_hum_divider.effective);
