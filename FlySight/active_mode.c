@@ -40,7 +40,6 @@
 #include "sensor_time.h"
 #include "state.h"
 #include "vbat.h"
-#include "ble_config.h"
 #include "current_config.h"
 
 extern UART_HandleTypeDef huart1;
@@ -80,13 +79,17 @@ void FS_ActiveMode_Init(void)
 	/* Seed runtime configuration from file config */
 	CC_Init(FS_Config_Get());
 
+	/* Apply computed BLE dividers to streaming modules */
+	CC_ApplyBleDividers();
+
 	/* Validate BLE configuration */
 	{
-		FS_BLE_ValidationResult_t result = FS_BLE_ValidateConfig(FS_Config_Get());
-		if (!result.valid)
+		const CC_RuntimeConfig_t *cc = CC_Get();
+		if (!cc->ble_budget_ok)
 		{
 			isSystemHealthy = false;
-			FS_Log_WriteEvent("BLE config validation failed: %s", result.error_msg);
+			FS_Log_WriteEvent("BLE budget exceeded: estimated %lu bytes/sec (limit %u)",
+					cc->ble_estimated_bytes_per_sec, BLE_SAFE_THROUGHPUT_LIMIT);
 		}
 	}
 

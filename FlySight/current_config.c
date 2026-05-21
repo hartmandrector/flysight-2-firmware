@@ -24,7 +24,11 @@
 #include <string.h>
 
 #include "current_config.h"
-#include "ble_config.h"
+#include "baro_ble.h"
+#include "hum_ble.h"
+#include "accel_ble.h"
+#include "gyro_ble.h"
+#include "mag_ble.h"
 #include "sensor_odr.h"
 
 /* ── BLE packet sizes (bytes) ──────────────────────────────────────────── */
@@ -45,14 +49,9 @@
 /* ActiveLook bandwidth warning threshold (percent of total budget) */
 #define CC_AL_HIGH_BW_PCT     30u
 
-/* Maximum number of registered change callbacks */
-#define CC_MAX_CALLBACKS       4u
-
 /* ── Module state ───────────────────────────────────────────────────────── */
 
-static CC_RuntimeConfig_t     cc_runtime;
-static CC_ChangeCallback_t    cc_callbacks[CC_MAX_CALLBACKS];
-static uint8_t                cc_callback_count;
+static CC_RuntimeConfig_t cc_runtime;
 
 /* ── Internal helpers ───────────────────────────────────────────────────── */
 
@@ -65,15 +64,10 @@ static void cc_set_field(CC_U16Field_t *f, uint16_t requested, uint16_t effectiv
     f->persist   = persist;
 }
 
-/* Invoke all registered callbacks and bump revision counter. */
+/* Increment revision counter on every mutation. */
 static void cc_notify(void)
 {
     cc_runtime.revision++;
-    for (uint8_t i = 0; i < cc_callback_count; i++)
-    {
-        if (cc_callbacks[i] != NULL)
-            cc_callbacks[i](&cc_runtime);
-    }
 }
 
 /* ── BLE budget recomputation ───────────────────────────────────────────── */
@@ -249,7 +243,6 @@ void CC_RecomputeBudget(void)
 void CC_Init(const FS_Config_Data_t *file_config)
 {
     memset(&cc_runtime, 0, sizeof(cc_runtime));
-    cc_callback_count = 0;
 
     /* GNSS rate */
     cc_set_field(&cc_runtime.gnss_rate_ms,
@@ -430,26 +423,13 @@ bool CC_SetAlEnabled(bool enabled, CC_Source_t source)
     cc_notify();
     return true;
 }
+/* ── BLE divider application ──────────────────────────────────────────────── */
 
-/* ── Persistence ─────────────────────────────────────────────────────────── */
-
-void CC_ExportToFileConfig(FS_Config_Data_t *out_config)
+void CC_ApplyBleDividers(void)
 {
-    /* Export fields marked CC_PERSIST_ON_REQUEST (requested values, not
-     * auto-calculated effective values). */
-    out_config->rate             = cc_runtime.gnss_rate_ms.effective;
-    out_config->ble_baro_divider  = cc_runtime.ble_baro_divider.requested;
-    out_config->ble_hum_divider   = cc_runtime.ble_hum_divider.requested;
-    out_config->ble_accel_divider = cc_runtime.ble_accel_divider.requested;
-    out_config->ble_gyro_divider  = cc_runtime.ble_gyro_divider.requested;
-    out_config->ble_mag_divider   = cc_runtime.ble_mag_divider.requested;
-    out_config->al_rate           = cc_runtime.al_rate_ms.effective;
-}
-
-/* ── Callbacks ────────────────────────────────────────────────────────────── */
-
-void CC_RegisterChangeCallback(CC_ChangeCallback_t cb)
-{
-    if (cc_callback_count < CC_MAX_CALLBACKS)
-        cc_callbacks[cc_callback_count++] = cb;
+    BARO_BLE_SetDivider(cc_runtime.ble_baro_divider.effective);
+    HUM_BLE_SetDivider(cc_runtime.ble_hum_divider.effective);
+    ACCEL_BLE_SetDivider(cc_runtime.ble_accel_divider.effective);
+    GYRO_BLE_SetDivider(cc_runtime.ble_gyro_divider.effective);
+    MAG_BLE_SetDivider(cc_runtime.ble_mag_divider.effective);
 }

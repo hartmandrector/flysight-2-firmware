@@ -32,7 +32,6 @@
 #include "gyro_ble.h"
 #include "mag_ble.h"
 #include "fusion_integration.h" // For Fusion calibration setters
-#include "ble_config.h"       // For validation and auto-calculation
 #include "config.h"           // For FS_Config_Get
 #include "current_config.h"   // For CC_SetGnssRateMs, CC_SetBleDivider, CC_Get
 #include "gnss.h"             // For FS_GNSS_SetDynamicModel, FS_GNSS_SetRateMs
@@ -46,21 +45,6 @@ void SensorData_Init(void)
 {
 	  GNSS_BLE_Init();
 }
-
-/* Apply all effective BLE dividers from CC to the streaming modules.
- * Must be called after any CC mutation that can change effective dividers
- * (GNSS rate change, divider set) so hardware state stays in sync with CC. */
-static void cc_apply_ble_dividers(void)
-{
-    const CC_RuntimeConfig_t *cc = CC_Get();
-    BARO_BLE_SetDivider(cc->ble_baro_divider.effective);
-    HUM_BLE_SetDivider(cc->ble_hum_divider.effective);
-    ACCEL_BLE_SetDivider(cc->ble_accel_divider.effective);
-    GYRO_BLE_SetDivider(cc->ble_gyro_divider.effective);
-    MAG_BLE_SetDivider(cc->ble_mag_divider.effective);
-}
-
-
 
 void SensorData_Handle_SD_ControlPointWrite(
 		const uint8_t *payload, uint8_t length,
@@ -119,7 +103,7 @@ void SensorData_Handle_SD_ControlPointWrite(
                     if (!CC_SetBleDivider(sensor_id, divider, CC_SRC_CONTROL_POINT)) {
                         status = CP_STATUS_INVALID_PARAMETER;
                     } else {
-                        cc_apply_ble_dividers();
+                        CC_ApplyBleDividers();
                         status = CP_STATUS_SUCCESS;
                     }
                 }
@@ -186,7 +170,7 @@ void SensorData_Handle_SD_ControlPointWrite(
                     } else {
                         /* GNSS rate change recomputes auto dividers in CC;
                          * propagate updated effective values to BLE modules. */
-                        cc_apply_ble_dividers();
+                        CC_ApplyBleDividers();
                         status = CP_STATUS_SUCCESS;
                     }
                 }

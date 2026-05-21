@@ -53,6 +53,11 @@ typedef uint8_t CC_PersistPolicy_t;
 #define CC_PERSIST_NEVER       0u   /* Runtime-only; not written back to config file */
 #define CC_PERSIST_ON_REQUEST  1u   /* Written to file only on explicit save request */
 
+/* ── BLE throughput budget ─────────────────────────────────────────────── */
+
+/* Safe aggregate BLE throughput limit (bytes/sec) */
+#define BLE_SAFE_THROUGHPUT_LIMIT  1500u
+
 /* ── Per-field wrapper ─────────────────────────────────────────────────── */
 
 typedef struct {
@@ -148,14 +153,9 @@ bool CC_SetAlEnabled(bool enabled, CC_Source_t source);
  * Useful after enable flags change. */
 void CC_RecomputeBudget(void);
 
-/* Persistence */
-
-/* Fill out_config with current effective values so FS_Config_Write() can
- * persist a fully-reproducible snapshot. */
-void CC_ExportToFileConfig(FS_Config_Data_t *out_config);
-
-/* Callbacks — invoked after every mutation + recompute */
-typedef void (*CC_ChangeCallback_t)(const CC_RuntimeConfig_t *new_cfg);
-void CC_RegisterChangeCallback(CC_ChangeCallback_t cb);
+/* Apply all effective BLE dividers from CC to the *_ble streaming modules.
+ * Must be called once after CC_Init() and after any mutation that changes
+ * effective dividers (GNSS rate, per-sensor divider). */
+void CC_ApplyBleDividers(void);
 
 #endif /* CURRENT_CONFIG_H_ */

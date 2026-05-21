@@ -24,7 +24,6 @@
 #include "main.h"
 #include "app_common.h"
 #include "config.h"
-#include "ble_config.h"
 #include "ff.h"
 #include "state.h"
 
@@ -596,9 +595,6 @@ FS_Config_Result_t FS_Config_Read(const char *filename)
 	}
 
 	f_close(&configFile);
-
-	// Auto-calculate BLE dividers if set to 0 (taking GPS bandwidth into account)
-	FS_BLE_AutoCalculateDividers(&config);
 
 	return FS_CONFIG_OK;
 }

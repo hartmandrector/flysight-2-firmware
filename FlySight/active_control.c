@@ -45,7 +45,6 @@
 #include "accel_ble.h"
 #include "gyro_ble.h"
 #include "mag_ble.h"
-#include "ble_config.h"
 #include "fusion_integration.h"
 
 #define LED_BLINK_MSEC      900
