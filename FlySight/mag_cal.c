@@ -127,7 +127,12 @@ static void MagCal_SaveTask(void)
         const uint32_t sb = *(const uint32_t *)(fn + 0x10C);
         const uint8_t  gb = *((volatile uint8_t *)(sb + 964));
         const uint8_t  sf = *((volatile uint8_t *)(sb + 0x48));
-        FS_Log_WriteEvent("MagCal diag: state=0x%lx gate=%d sf=%d", (unsigned long)sb, (int)gb, (int)sf);
+        FS_Log_WriteEvent("MagCal init q=%s hi=[%ld,%ld,%ld]e-3g (state=0x%lx gate=%d sf=%d)",
+            quality_names[s_quality],
+            (long)(s_hi_gauss[0] * 1000.0f),
+            (long)(s_hi_gauss[1] * 1000.0f),
+            (long)(s_hi_gauss[2] * 1000.0f),
+            (unsigned long)sb, (int)gb, (int)sf);
         s_first_task_run = true;
     }
 
@@ -239,9 +244,11 @@ static void MagCal_Load(void)
     UINT br;
     MagCal_FileData_t data;
 
-    /* Skip if we already have an in-RAM calibration (sleep/wake cycle) */
+    /* If we already have an in-RAM calibration (sleep/wake cycle), re-apply
+     * it to the freshly initialised fusion module and return — no file I/O. */
     if (s_quality != MAG_CAL_QUALITY_UNKNOWN)
     {
+        ApplyToFusion();
         return;
     }
 
@@ -259,6 +266,7 @@ static void MagCal_Load(void)
         s_hi_gauss[0] = data.hi_gauss[0];
         s_hi_gauss[1] = data.hi_gauss[1];
         s_hi_gauss[2] = data.hi_gauss[2];
+        ApplyToFusion();
     }
 
     f_close(&f);
@@ -293,10 +301,13 @@ static void MagCal_Save(void)
 
 void MagCal_Init(void)
 {
-    char libver[35];
-
     /* Restore calibration from SD card on cold boot */
     MagCal_Load();
+
+    /* Reset per-session flag so the diag event fires on each mode entry
+     * (the log is not yet active during MagCal_Init, so we defer the
+     * init log message to the first MagCal_SaveTask run). */
+    s_first_task_run = false;
 
     /* Register deferred-save task (safe to call multiple times) */
     UTIL_SEQ_RegTask(1<<CFG_TASK_FS_MAGCAL_SAVE_ID, UTIL_SEQ_RFU, MagCal_SaveTask);
@@ -335,8 +346,6 @@ void MagCal_Init(void)
         *((volatile uint8_t *)(state_base + 0x48)) = 1;
     }
 
-    MotionFX_GetLibVersion(libver);
-
     /*
      * If a valid calibration already exists (from RAM or just loaded from
      * disk), apply it to fusion immediately so hard iron correction is not
@@ -347,8 +356,12 @@ void MagCal_Init(void)
     {
         ApplyToFusion();
     }
-
-    FS_Log_WriteEvent("MagCal init q=%s lib=%s", quality_names[s_quality], libver);
+    /* NOTE: FS_Log_WriteEvent is intentionally NOT called here.
+     * MagCal_Init() runs before FS_Log_Init() (logState is still
+     * UNINITIALIZED at this point), so any WriteEvent call would be
+     * silently dropped.  The init summary is instead logged on the
+     * first MagCal_SaveTask run, which executes after the log is active.
+     */
 }
 
 void MagCal_Update(int16_t x, int16_t y, int16_t z)

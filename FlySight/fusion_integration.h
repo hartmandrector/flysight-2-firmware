@@ -57,12 +57,13 @@ typedef struct {
 
 /**
  * Initialize the sensor fusion module
- * Reads calibration from config if available
+ * Reads fusion-enabled flag from config; sets up MotionFX state and knobs.
  */
 void FS_Fusion_Init(void);
 
 /**
  * Start sensor fusion processing
+ * Re-initialises the MotionFX filter state for a clean start.
  */
 void FS_Fusion_Start(void);
 
@@ -73,19 +74,20 @@ void FS_Fusion_Stop(void);
 
 /**
  * Process new magnetometer data
- * Called from FS_Mag_DataReady_Callback at ~100 Hz
- * 
- * @param x Magnetometer X (gauss * 1000)
- * @param y Magnetometer Y (gauss * 1000)
- * @param z Magnetometer Z (gauss * 1000)
+ * Called from the mag data-ready callback.
+ *
+ * @param x Magnetometer X (milligauss)
+ * @param y Magnetometer Y (milligauss)
+ * @param z Magnetometer Z (milligauss)
  */
 void FS_Fusion_UpdateMag(int16_t x, int16_t y, int16_t z);
 
 /**
  * Process new IMU data and run fusion algorithm
- * Called from FS_IMU_DataReady_Callback at ~416 Hz
- * This is the main fusion update - gyro integration happens here
- * 
+ * Called from the IMU data-ready callback.
+ * Runs MotionFX_propagate on every call; runs MotionFX_update when a fresh
+ * mag vector is available.
+ *
  * @param time_ms  Timestamp in milliseconds
  * @param wx       Gyro X (deg/s * 1000)
  * @param wy       Gyro Y (deg/s * 1000)
@@ -124,13 +126,13 @@ bool FS_Fusion_IsValid(void);
 
 /**
  * Set magnetometer hard-iron calibration at runtime
- * @param offset Hard iron offset vector (gauss)
+ * @param offset Hard iron offset vector (gauss, sensor frame)
  */
 void FS_Fusion_SetMagHardIron(FusionVector offset);
 
 /**
  * Set magnetometer soft-iron calibration at runtime
- * @param matrix 3x3 soft-iron correction matrix
+ * Not used by MotionFX; accepted as a no-op for API compatibility.
  */
 void FS_Fusion_SetMagSoftIron(FusionMatrix matrix);
 
@@ -141,8 +143,8 @@ void FS_Fusion_SetMagSoftIron(FusionMatrix matrix);
 FusionVector FS_Fusion_GetLinearAccel(void);
 
 /**
- * Get linear acceleration in Earth frame (NWU)
- * @return Earth-frame acceleration in g
+ * Get linear acceleration in Earth frame
+ * Not available from MotionFX output; returns zero vector.
  */
 FusionVector FS_Fusion_GetEarthAccel(void);
 

@@ -108,10 +108,12 @@ void FS_ActiveControl_Init(void)
 	
 	// Initialize sensor fusion
 	FS_Fusion_Init();
-	FS_Fusion_Start();
 
 	// Initialize magnetometer hard iron calibration
 	MagCal_Init();
+
+	// Start sensor fusion (after MagCal so hard iron is pre-loaded)
+	FS_Fusion_Start();
 }
 
 void FS_ActiveControl_DeInit(void)
@@ -268,8 +270,8 @@ void FS_IMU_DataReady_Callback(void)
 
 	if (state != FS_CONTROL_ACTIVE) return;
 
-	// Update sensor fusion
-	FS_Fusion_UpdateIMU(imu_data.time,
+	// Update sensor fusion (imu_data.time is in µs; function expects ms)
+	FS_Fusion_UpdateIMU((uint32_t)(imu_data.time / 1000U),
 	                    imu_data.wx, imu_data.wy, imu_data.wz,
 	                    imu_data.ax, imu_data.ay, imu_data.az);
 

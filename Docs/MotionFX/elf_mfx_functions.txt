@@ -1,0 +1,1652 @@
+; ============================================================================
+; MotionFX key functions -- disassembly from linked Release ELF
+; Firmware branch: developfusion
+; Generated: 2026-05-21
+; Tool: arm-none-eabi-objdump (GNU Arm 14.3 rel1)
+;
+; KEY DISCOVERIES (see also mfx_disasm.txt for raw library disassembly):
+;
+; 1. MotionFX_initialize HANGS on STM32WB5MMGHX
+;    - CPUID matches Cortex-M4, ETM at 0xe0042000 reads non-zero
+;    - Falls to CRC auth path: writes 0xf407a5c2 to 0x40023000 (CRC->DR on WB)
+;    - Expects readback 0xb5e8b5cd -- fails on WB5M, hits infinite loop at +0x4c
+;    - Fix: set gate byte via constant-pool literal (MotionFX_initialize+0x154)
+;      (uint32_t)(fn & ~1) + 0x154 -> global_state addr -> [+0x3C4] = 1
+;
+; 2. KALMAN MATRICES NOT INITIALIZED without MFX_emptyAttitude
+;    - Gate byte bypass skips MotionFX_initialize entirely
+;    - MFX_emptyAttitude (LOCAL symbol) is the FIRST call in initialize's
+;      success path (BL at fn+0xb8). It calls DataHist_parameters to compute
+;      initial Kalman P/Q/R covariance matrices and writes them to state.
+;    - Without it: P=Q=R=0 -> Kalman gain K~0 -> no accelerometer tilt
+;      correction -> filter behaves as pure gyro integrator
+;    - Symptom: quaternion stays near identity regardless of device orientation
+;    - Fix (MFX_CallEmptyAttitude in fusion_integration.c):
+;        Decode Thumb-2 BL T1 at (MotionFX_initialize & ~1) + 0xb8
+;        Call the decoded target with Thumb interworking bit set
+;
+; 3. BL T1 decode algorithm (verified against these addresses):
+;    hw1 = *(uint16_t*)(fn+0xb8);  hw2 = *(uint16_t*)(fn+0xba);
+;    S=hw1[10]; imm10=hw1[9:0]; J1=hw2[13]; J2=hw2[11]; imm11=hw2[10:0]
+;    I1=~(J1^S)&1; I2=~(J2^S)&1
+;    off = SignExtend(S:I1:I2:imm10:imm11:0, 25)
+;    target = (fn+0xbc) + off   (PC at BL = instruction addr + 4)
+;
+; 4. MFX_emptyAttitude state writes (r9 = state buffer):
+;    [8]=1.0f  [12]=0x01010100  [16]=1.0f  [20]=10.0f
+;    [24..52]=initial knob values (overridden by setKnobs later)
+;    [88..184]=Kalman covariance matrices (from DataHist_parameters)
+;    [192..576+]=zero-filled
+;
+; Symbol addresses in this build:
+;   DataHist_parameters   0x0801e7dc  size=0x156
+;   MFX_emptyAttitude     0x0802069c  size=0x5ce  (LOCAL)
+;   MotionFX_initialize   0x0802763c  size=0x170
+;   MotionFX_setKnobs     0x080277ac  size=0x098
+;   MotionFX_getKnobs     0x08027844  size=0x07c
+;   MotionFX_enable_6X    0x080278c0  size=0x040
+;   MotionFX_enable_9X    0x08027900  size=0x040
+;   MotionFX_propagate    0x08027960  size=0x1f8
+;   MotionFX_update       0x08027940  size=0x020
+;   MotionFX_MagCal_init  0x08027b58  size=0x120
+;   MotionFX_MagCal_run   0x08027c78  size=0x462
+;   MotionFX_MagCal_getParams 0x080280dc size=0x08c
+; ============================================================================
+
+;
+; --- DataHist_parameters @ 0x0801e7dc  size=0x156 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+0801e7dc <DataHist_parameters>:
+ 801e7dc:	e92d 41f0 	stmdb	sp!, {r4, r5, r6, r7, r8, lr}
+ 801e7e0:	9c09      	ldr	r4, [sp, #36]	@ 0x24
+ 801e7e2:	9f06      	ldr	r7, [sp, #24]
+ 801e7e4:	7020      	strb	r0, [r4, #0]
+ 801e7e6:	6808      	ldr	r0, [r1, #0]
+ 801e7e8:	6060      	str	r0, [r4, #4]
+ 801e7ea:	6848      	ldr	r0, [r1, #4]
+ 801e7ec:	60a0      	str	r0, [r4, #8]
+ 801e7ee:	6888      	ldr	r0, [r1, #8]
+ 801e7f0:	60e0      	str	r0, [r4, #12]
+ 801e7f2:	68c8      	ldr	r0, [r1, #12]
+ 801e7f4:	6120      	str	r0, [r4, #16]
+ 801e7f6:	6908      	ldr	r0, [r1, #16]
+ 801e7f8:	6160      	str	r0, [r4, #20]
+ 801e7fa:	6948      	ldr	r0, [r1, #20]
+ 801e7fc:	61a0      	str	r0, [r4, #24]
+ 801e7fe:	6988      	ldr	r0, [r1, #24]
+ 801e800:	61e0      	str	r0, [r4, #28]
+ 801e802:	69c8      	ldr	r0, [r1, #28]
+ 801e804:	6220      	str	r0, [r4, #32]
+ 801e806:	6a09      	ldr	r1, [r1, #32]
+ 801e808:	6261      	str	r1, [r4, #36]	@ 0x24
+ 801e80a:	e9dd 6507 	ldrd	r6, r5, [sp, #28]
+ 801e80e:	8811      	ldrh	r1, [r2, #0]
+ 801e810:	edd2 7a01 	vldr	s15, [r2, #4]
+ 801e814:	8521      	strh	r1, [r4, #40]	@ 0x28
+ 801e816:	3280      	adds	r2, #128	@ 0x80
+ 801e818:	f104 0830 	add.w	r8, r4, #48	@ 0x30
+ 801e81c:	f04f 0e00 	mov.w	lr, #0
+ 801e820:	f1a2 0178 	sub.w	r1, r2, #120	@ 0x78
+ 801e824:	4640      	mov	r0, r8
+ 801e826:	f851 cb04 	ldr.w	ip, [r1], #4
+ 801e82a:	f840 cb04 	str.w	ip, [r0], #4
+ 801e82e:	4291      	cmp	r1, r2
+ 801e830:	d1f9      	bne.n	801e826 <DataHist_parameters+0x4a>
+ 801e832:	f10e 0e1e 	add.w	lr, lr, #30
+ 801e836:	f1be 0f5a 	cmp.w	lr, #90	@ 0x5a
+ 801e83a:	f108 0878 	add.w	r8, r8, #120	@ 0x78
+ 801e83e:	f101 0278 	add.w	r2, r1, #120	@ 0x78
+ 801e842:	d1ed      	bne.n	801e820 <DataHist_parameters+0x44>
+ 801e844:	edc4 7a0b 	vstr	s15, [r4, #44]	@ 0x2c
+ 801e848:	881a      	ldrh	r2, [r3, #0]
+ 801e84a:	f8d3 8004 	ldr.w	r8, [r3, #4]
+ 801e84e:	f8a4 2198 	strh.w	r2, [r4, #408]	@ 0x198
+ 801e852:	3380      	adds	r3, #128	@ 0x80
+ 801e854:	f504 7ed0 	add.w	lr, r4, #416	@ 0x1a0
+ 801e858:	f04f 0c00 	mov.w	ip, #0
+ 801e85c:	f1a3 0278 	sub.w	r2, r3, #120	@ 0x78
+ 801e860:	4671      	mov	r1, lr
+ 801e862:	f852 0b04 	ldr.w	r0, [r2], #4
+ 801e866:	f841 0b04 	str.w	r0, [r1], #4
+ 801e86a:	429a      	cmp	r2, r3
+ 801e86c:	d1f9      	bne.n	801e862 <DataHist_parameters+0x86>
+ 801e86e:	f10c 0c1e 	add.w	ip, ip, #30
+ 801e872:	f1bc 0f5a 	cmp.w	ip, #90	@ 0x5a
+ 801e876:	f10e 0e78 	add.w	lr, lr, #120	@ 0x78
+ 801e87a:	f102 0378 	add.w	r3, r2, #120	@ 0x78
+ 801e87e:	d1ed      	bne.n	801e85c <DataHist_parameters+0x80>
+ 801e880:	f8c4 819c 	str.w	r8, [r4, #412]	@ 0x19c
+ 801e884:	883b      	ldrh	r3, [r7, #0]
+ 801e886:	f8d7 e004 	ldr.w	lr, [r7, #4]
+ 801e88a:	f8a4 3308 	strh.w	r3, [r4, #776]	@ 0x308
+ 801e88e:	f107 0080 	add.w	r0, r7, #128	@ 0x80
+ 801e892:	f504 7c44 	add.w	ip, r4, #784	@ 0x310
+ 801e896:	2700      	movs	r7, #0
+ 801e898:	f1a0 0378 	sub.w	r3, r0, #120	@ 0x78
+ 801e89c:	4662      	mov	r2, ip
+ 801e89e:	f853 1b04 	ldr.w	r1, [r3], #4
+ 801e8a2:	f842 1b04 	str.w	r1, [r2], #4
+ 801e8a6:	4298      	cmp	r0, r3
+ 801e8a8:	d1f9      	bne.n	801e89e <DataHist_parameters+0xc2>
+ 801e8aa:	371e      	adds	r7, #30
+ 801e8ac:	2f5a      	cmp	r7, #90	@ 0x5a
+ 801e8ae:	f10c 0c78 	add.w	ip, ip, #120	@ 0x78
+ 801e8b2:	f100 0078 	add.w	r0, r0, #120	@ 0x78
+ 801e8b6:	d1ef      	bne.n	801e898 <DataHist_parameters+0xbc>
+ 801e8b8:	f8c4 e30c 	str.w	lr, [r4, #780]	@ 0x30c
+ 801e8bc:	8833      	ldrh	r3, [r6, #0]
+ 801e8be:	f8d6 c004 	ldr.w	ip, [r6, #4]
+ 801e8c2:	f8a4 3478 	strh.w	r3, [r4, #1144]	@ 0x478
+ 801e8c6:	f106 0080 	add.w	r0, r6, #128	@ 0x80
+ 801e8ca:	f504 6790 	add.w	r7, r4, #1152	@ 0x480
+ 801e8ce:	2600      	movs	r6, #0
+ 801e8d0:	f1a0 0378 	sub.w	r3, r0, #120	@ 0x78
+ 801e8d4:	463a      	mov	r2, r7
+ 801e8d6:	f853 1b04 	ldr.w	r1, [r3], #4
+ 801e8da:	f842 1b04 	str.w	r1, [r2], #4
+ 801e8de:	4298      	cmp	r0, r3
+ 801e8e0:	d1f9      	bne.n	801e8d6 <DataHist_parameters+0xfa>
+ 801e8e2:	361e      	adds	r6, #30
+ 801e8e4:	2e5a      	cmp	r6, #90	@ 0x5a
+ 801e8e6:	f107 0778 	add.w	r7, r7, #120	@ 0x78
+ 801e8ea:	f100 0078 	add.w	r0, r0, #120	@ 0x78
+ 801e8ee:	d1ef      	bne.n	801e8d0 <DataHist_parameters+0xf4>
+ 801e8f0:	f504 638f 	add.w	r3, r4, #1144	@ 0x478
+ 801e8f4:	69aa      	ldr	r2, [r5, #24]
+ 801e8f6:	f8c3 c004 	str.w	ip, [r3, #4]
+ 801e8fa:	f504 63bd 	add.w	r3, r4, #1512	@ 0x5e8
+ 801e8fe:	7829      	ldrb	r1, [r5, #0]
+ 801e900:	f884 15e8 	strb.w	r1, [r4, #1512]	@ 0x5e8
+ 801e904:	619a      	str	r2, [r3, #24]
+ 801e906:	686a      	ldr	r2, [r5, #4]
+ 801e908:	605a      	str	r2, [r3, #4]
+ 801e90a:	68aa      	ldr	r2, [r5, #8]
+ 801e90c:	609a      	str	r2, [r3, #8]
+ 801e90e:	68ea      	ldr	r2, [r5, #12]
+ 801e910:	60da      	str	r2, [r3, #12]
+ 801e912:	692a      	ldr	r2, [r5, #16]
+ 801e914:	611a      	str	r2, [r3, #16]
+ 801e916:	696a      	ldr	r2, [r5, #20]
+ 801e918:	615a      	str	r2, [r3, #20]
+ 801e91a:	69ea      	ldr	r2, [r5, #28]
+ 801e91c:	61da      	str	r2, [r3, #28]
+ 801e91e:	6a2a      	ldr	r2, [r5, #32]
+ 801e920:	621a      	str	r2, [r3, #32]
+ 801e922:	6a6a      	ldr	r2, [r5, #36]	@ 0x24
+ 801e924:	625a      	str	r2, [r3, #36]	@ 0x24
+ 801e926:	6aaa      	ldr	r2, [r5, #40]	@ 0x28
+ 801e928:	629a      	str	r2, [r3, #40]	@ 0x28
+ 801e92a:	6aea      	ldr	r2, [r5, #44]	@ 0x2c
+ 801e92c:	62da      	str	r2, [r3, #44]	@ 0x2c
+ 801e92e:	e8bd 81f0 	ldmia.w	sp!, {r4, r5, r6, r7, r8, pc}
+;
+; --- MFX_emptyAttitude @ 0x0802069c  size=0x5ce ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+0802069c <MFX_emptyAttitude>:
+ 802069c:	e92d 4ff0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, sl, fp, lr}
+ 80206a0:	ed2d 8b02 	vpush	{d8}
+ 80206a4:	4fe9      	ldr	r7, [pc, #932]	@ (8020a4c <MFX_emptyAttitude+0x3b0>)
+ 80206a6:	eddf 8aea 	vldr	s17, [pc, #936]	@ 8020a50 <MFX_emptyAttitude+0x3b4>
+ 80206aa:	f6ad 4dd4 	subw	sp, sp, #3284	@ 0xcd4
+ 80206ae:	f04f 0800 	mov.w	r8, #0
+ 80206b2:	f50d 64d7 	add.w	r4, sp, #1720	@ 0x6b8
+ 80206b6:	46bc      	mov	ip, r7
+ 80206b8:	e9c4 8800 	strd	r8, r8, [r4]
+ 80206bc:	f83c 3b04 	ldrh.w	r3, [ip], #4
+ 80206c0:	f8c4 8008 	str.w	r8, [r4, #8]
+ 80206c4:	f88d 854a 	strb.w	r8, [sp, #1354]	@ 0x54a
+ 80206c8:	f8ad 3548 	strh.w	r3, [sp, #1352]	@ 0x548
+ 80206cc:	4681      	mov	r9, r0
+ 80206ce:	f8dd 3548 	ldr.w	r3, [sp, #1352]	@ 0x548
+ 80206d2:	f8ad 30a8 	strh.w	r3, [sp, #168]	@ 0xa8
+ 80206d6:	e894 0007 	ldmia.w	r4, {r0, r1, r2}
+ 80206da:	0c1b      	lsrs	r3, r3, #16
+ 80206dc:	f88d 30aa 	strb.w	r3, [sp, #170]	@ 0xaa
+ 80206e0:	ab2b      	add	r3, sp, #172	@ 0xac
+ 80206e2:	e883 0007 	stmia.w	r3, {r0, r1, r2}
+ 80206e6:	ab2e      	add	r3, sp, #184	@ 0xb8
+ 80206e8:	e883 0007 	stmia.w	r3, {r0, r1, r2}
+ 80206ec:	ab31      	add	r3, sp, #196	@ 0xc4
+ 80206ee:	e883 0007 	stmia.w	r3, {r0, r1, r2}
+ 80206f2:	ab34      	add	r3, sp, #208	@ 0xd0
+ 80206f4:	eeb7 8a00 	vmov.f32	s16, #112	@ 0x3f800000  1.0
+ 80206f8:	e883 0007 	stmia.w	r3, {r0, r1, r2}
+ 80206fc:	ab37      	add	r3, sp, #220	@ 0xdc
+ 80206fe:	edcd 8a08 	vstr	s17, [sp, #32]
+ 8020702:	edcd 8a09 	vstr	s17, [sp, #36]	@ 0x24
+ 8020706:	edcd 8a0a 	vstr	s17, [sp, #40]	@ 0x28
+ 802070a:	ed8d 8a0b 	vstr	s16, [sp, #44]	@ 0x2c
+ 802070e:	e883 0007 	stmia.w	r3, {r0, r1, r2}
+ 8020712:	ab3a      	add	r3, sp, #232	@ 0xe8
+ 8020714:	e883 0007 	stmia.w	r3, {r0, r1, r2}
+ 8020718:	e8bc 000f 	ldmia.w	ip!, {r0, r1, r2, r3}
+ 802071c:	f10d 0e44 	add.w	lr, sp, #68	@ 0x44
+ 8020720:	e8ae 000f 	stmia.w	lr!, {r0, r1, r2, r3}
+ 8020724:	e8bc 000f 	ldmia.w	ip!, {r0, r1, r2, r3}
+ 8020728:	e8ae 000f 	stmia.w	lr!, {r0, r1, r2, r3}
+ 802072c:	f44f 75b4 	mov.w	r5, #360	@ 0x168
+ 8020730:	f8dc 3000 	ldr.w	r3, [ip]
+ 8020734:	f8ce 3000 	str.w	r3, [lr]
+ 8020738:	462a      	mov	r2, r5
+ 802073a:	4641      	mov	r1, r8
+ 802073c:	4620      	mov	r0, r4
+ 802073e:	f007 ff65 	bl	802860c <memset>
+ 8020742:	f44f 56f0 	mov.w	r6, #7680	@ 0x1e00
+ 8020746:	462a      	mov	r2, r5
+ 8020748:	4621      	mov	r1, r4
+ 802074a:	a840      	add	r0, sp, #256	@ 0x100
+ 802074c:	f8ad 60f8 	strh.w	r6, [sp, #248]	@ 0xf8
+ 8020750:	f008 f88b 	bl	802886a <memcpy>
+ 8020754:	462a      	mov	r2, r5
+ 8020756:	4641      	mov	r1, r8
+ 8020758:	4620      	mov	r0, r4
+ 802075a:	ed8d 8a3f 	vstr	s16, [sp, #252]	@ 0xfc
+ 802075e:	f007 ff55 	bl	802860c <memset>
+ 8020762:	462a      	mov	r2, r5
+ 8020764:	4621      	mov	r1, r4
+ 8020766:	a89c      	add	r0, sp, #624	@ 0x270
+ 8020768:	f8ad 6268 	strh.w	r6, [sp, #616]	@ 0x268
+ 802076c:	f008 f87d 	bl	802886a <memcpy>
+ 8020770:	462a      	mov	r2, r5
+ 8020772:	4641      	mov	r1, r8
+ 8020774:	4620      	mov	r0, r4
+ 8020776:	ed8d 8a9b 	vstr	s16, [sp, #620]	@ 0x26c
+ 802077a:	f007 ff47 	bl	802860c <memset>
+ 802077e:	462a      	mov	r2, r5
+ 8020780:	4621      	mov	r1, r4
+ 8020782:	a8f8      	add	r0, sp, #992	@ 0x3e0
+ 8020784:	f8ad 63d8 	strh.w	r6, [sp, #984]	@ 0x3d8
+ 8020788:	f008 f86f 	bl	802886a <memcpy>
+ 802078c:	462a      	mov	r2, r5
+ 802078e:	4641      	mov	r1, r8
+ 8020790:	4620      	mov	r0, r4
+ 8020792:	ed8d 8af7 	vstr	s16, [sp, #988]	@ 0x3dc
+ 8020796:	f007 ff39 	bl	802860c <memset>
+ 802079a:	462a      	mov	r2, r5
+ 802079c:	4621      	mov	r1, r4
+ 802079e:	f50d 60aa 	add.w	r0, sp, #1360	@ 0x550
+ 80207a2:	f8ad 6548 	strh.w	r6, [sp, #1352]	@ 0x548
+ 80207a6:	f008 f860 	bl	802886a <memcpy>
+ 80207aa:	f04f 0301 	mov.w	r3, #1
+ 80207ae:	f88d 3068 	strb.w	r3, [sp, #104]	@ 0x68
+ 80207b2:	f107 0528 	add.w	r5, r7, #40	@ 0x28
+ 80207b6:	4ba7      	ldr	r3, [pc, #668]	@ (8020a54 <MFX_emptyAttitude+0x3b8>)
+ 80207b8:	9320      	str	r3, [sp, #128]	@ 0x80
+ 80207ba:	cd0f      	ldmia	r5!, {r0, r1, r2, r3}
+ 80207bc:	ae0c      	add	r6, sp, #48	@ 0x30
+ 80207be:	46b3      	mov	fp, r6
+ 80207c0:	c60f      	stmia	r6!, {r0, r1, r2, r3}
+ 80207c2:	e8bb 000f 	ldmia.w	fp!, {r0, r1, r2, r3}
+ 80207c6:	e9c4 8800 	strd	r8, r8, [r4]
+ 80207ca:	e9c4 8802 	strd	r8, r8, [r4, #8]
+ 80207ce:	f8c4 8010 	str.w	r8, [r4, #16]
+ 80207d2:	f10d 0c6c 	add.w	ip, sp, #108	@ 0x6c
+ 80207d6:	46a6      	mov	lr, r4
+ 80207d8:	e8ac 000f 	stmia.w	ip!, {r0, r1, r2, r3}
+ 80207dc:	e8be 000f 	ldmia.w	lr!, {r0, r1, r2, r3}
+ 80207e0:	f50d 6aa9 	add.w	sl, sp, #1352	@ 0x548
+ 80207e4:	682d      	ldr	r5, [r5, #0]
+ 80207e6:	f8cc 5000 	str.w	r5, [ip]
+ 80207ea:	af21      	add	r7, sp, #132	@ 0x84
+ 80207ec:	ed8a 8a01 	vstr	s16, [sl, #4]
+ 80207f0:	c70f      	stmia	r7!, {r0, r1, r2, r3}
+ 80207f2:	ab1a      	add	r3, sp, #104	@ 0x68
+ 80207f4:	e9cd a301 	strd	sl, r3, [sp, #4]
+ 80207f8:	abf6      	add	r3, sp, #984	@ 0x3d8
+ 80207fa:	9300      	str	r3, [sp, #0]
+ 80207fc:	aa3e      	add	r2, sp, #248	@ 0xf8
+ 80207fe:	f8c7 8000 	str.w	r8, [r7]
+ 8020802:	ab9a      	add	r3, sp, #616	@ 0x268
+ 8020804:	a911      	add	r1, sp, #68	@ 0x44
+ 8020806:	9403      	str	r4, [sp, #12]
+ 8020808:	2001      	movs	r0, #1
+ 802080a:	f7fd ffe7 	bl	801e7dc <DataHist_parameters>
+ 802080e:	4b92      	ldr	r3, [pc, #584]	@ (8020a58 <MFX_emptyAttitude+0x3bc>)
+ 8020810:	f8c9 3018 	str.w	r3, [r9, #24]
+ 8020814:	4b91      	ldr	r3, [pc, #580]	@ (8020a5c <MFX_emptyAttitude+0x3c0>)
+ 8020816:	f8c9 301c 	str.w	r3, [r9, #28]
+ 802081a:	4b91      	ldr	r3, [pc, #580]	@ (8020a60 <MFX_emptyAttitude+0x3c4>)
+ 802081c:	f8c9 3020 	str.w	r3, [r9, #32]
+ 8020820:	4b90      	ldr	r3, [pc, #576]	@ (8020a64 <MFX_emptyAttitude+0x3c8>)
+ 8020822:	f8c9 3024 	str.w	r3, [r9, #36]	@ 0x24
+ 8020826:	4b90      	ldr	r3, [pc, #576]	@ (8020a68 <MFX_emptyAttitude+0x3cc>)
+ 8020828:	f8c9 3028 	str.w	r3, [r9, #40]	@ 0x28
+ 802082c:	4b8f      	ldr	r3, [pc, #572]	@ (8020a6c <MFX_emptyAttitude+0x3d0>)
+ 802082e:	f8c9 302c 	str.w	r3, [r9, #44]	@ 0x2c
+ 8020832:	4b8f      	ldr	r3, [pc, #572]	@ (8020a70 <MFX_emptyAttitude+0x3d4>)
+ 8020834:	f8c9 3030 	str.w	r3, [r9, #48]	@ 0x30
+ 8020838:	f10d 0cac 	add.w	ip, sp, #172	@ 0xac
+ 802083c:	4b8d      	ldr	r3, [pc, #564]	@ (8020a74 <MFX_emptyAttitude+0x3d8>)
+ 802083e:	f8c9 3034 	str.w	r3, [r9, #52]	@ 0x34
+ 8020842:	e8bc 0007 	ldmia.w	ip!, {r0, r1, r2}
+ 8020846:	f8bd 30a8 	ldrh.w	r3, [sp, #168]	@ 0xa8
+ 802084a:	f8a9 3070 	strh.w	r3, [r9, #112]	@ 0x70
+ 802084e:	f89d 30aa 	ldrb.w	r3, [sp, #170]	@ 0xaa
+ 8020852:	f889 3072 	strb.w	r3, [r9, #114]	@ 0x72
+ 8020856:	f240 1301 	movw	r3, #257	@ 0x101
+ 802085a:	f8a9 3000 	strh.w	r3, [r9]
+ 802085e:	f8a9 3004 	strh.w	r3, [r9, #4]
+ 8020862:	4b85      	ldr	r3, [pc, #532]	@ (8020a78 <MFX_emptyAttitude+0x3dc>)
+ 8020864:	f8c9 300c 	str.w	r3, [r9, #12]
+ 8020868:	f8c9 0074 	str.w	r0, [r9, #116]	@ 0x74
+ 802086c:	f8c9 1078 	str.w	r1, [r9, #120]	@ 0x78
+ 8020870:	4b82      	ldr	r3, [pc, #520]	@ (8020a7c <MFX_emptyAttitude+0x3e0>)
+ 8020872:	f8c9 207c 	str.w	r2, [r9, #124]	@ 0x7c
+ 8020876:	af2e      	add	r7, sp, #184	@ 0xb8
+ 8020878:	2000      	movs	r0, #0
+ 802087a:	2100      	movs	r1, #0
+ 802087c:	f8c9 3014 	str.w	r3, [r9, #20]
+ 8020880:	e9c9 8816 	strd	r8, r8, [r9, #88]	@ 0x58
+ 8020884:	e9c9 881a 	strd	r8, r8, [r9, #104]	@ 0x68
+ 8020888:	e9c9 0118 	strd	r0, r1, [r9, #96]	@ 0x60
+ 802088c:	f8a9 8002 	strh.w	r8, [r9, #2]
+ 8020890:	ed89 8a02 	vstr	s16, [r9, #8]
+ 8020894:	ed89 8a04 	vstr	s16, [r9, #16]
+ 8020898:	cf07      	ldmia	r7!, {r0, r1, r2}
+ 802089a:	ae31      	add	r6, sp, #196	@ 0xc4
+ 802089c:	f8c9 0080 	str.w	r0, [r9, #128]	@ 0x80
+ 80208a0:	f8c9 1084 	str.w	r1, [r9, #132]	@ 0x84
+ 80208a4:	f8c9 2088 	str.w	r2, [r9, #136]	@ 0x88
+ 80208a8:	ce07      	ldmia	r6!, {r0, r1, r2}
+ 80208aa:	ad34      	add	r5, sp, #208	@ 0xd0
+ 80208ac:	f8c9 008c 	str.w	r0, [r9, #140]	@ 0x8c
+ 80208b0:	f8c9 1090 	str.w	r1, [r9, #144]	@ 0x90
+ 80208b4:	f8c9 2094 	str.w	r2, [r9, #148]	@ 0x94
+ 80208b8:	cd07      	ldmia	r5!, {r0, r1, r2}
+ 80208ba:	f10d 0bdc 	add.w	fp, sp, #220	@ 0xdc
+ 80208be:	f8c9 0098 	str.w	r0, [r9, #152]	@ 0x98
+ 80208c2:	f8c9 109c 	str.w	r1, [r9, #156]	@ 0x9c
+ 80208c6:	f8c9 20a0 	str.w	r2, [r9, #160]	@ 0xa0
+ 80208ca:	e8bb 0007 	ldmia.w	fp!, {r0, r1, r2}
+ 80208ce:	f10d 0ee8 	add.w	lr, sp, #232	@ 0xe8
+ 80208d2:	f8c9 00a4 	str.w	r0, [r9, #164]	@ 0xa4
+ 80208d6:	f8c9 10a8 	str.w	r1, [r9, #168]	@ 0xa8
+ 80208da:	f8c9 20ac 	str.w	r2, [r9, #172]	@ 0xac
+ 80208de:	e8be 0007 	ldmia.w	lr!, {r0, r1, r2}
+ 80208e2:	ed9f 6a67 	vldr	s12, [pc, #412]	@ 8020a80 <MFX_emptyAttitude+0x3e4>
+ 80208e6:	ed9f 7a67 	vldr	s14, [pc, #412]	@ 8020a84 <MFX_emptyAttitude+0x3e8>
+ 80208ea:	eddf 7a67 	vldr	s15, [pc, #412]	@ 8020a88 <MFX_emptyAttitude+0x3ec>
+ 80208ee:	f8c9 20b8 	str.w	r2, [r9, #184]	@ 0xb8
+ 80208f2:	eef6 6a00 	vmov.f32	s13, #96	@ 0x3f000000  0.5
+ 80208f6:	f44f 1248 	mov.w	r2, #3276800	@ 0x320000
+ 80208fa:	f8c9 00b0 	str.w	r0, [r9, #176]	@ 0xb0
+ 80208fe:	f8c9 10b4 	str.w	r1, [r9, #180]	@ 0xb4
+ 8020902:	ed89 6a65 	vstr	s12, [r9, #404]	@ 0x194
+ 8020906:	edc9 6a66 	vstr	s13, [r9, #408]	@ 0x198
+ 802090a:	ed89 7a67 	vstr	s14, [r9, #412]	@ 0x19c
+ 802090e:	edc9 8a64 	vstr	s17, [r9, #400]	@ 0x190
+ 8020912:	edc9 8a30 	vstr	s17, [r9, #192]	@ 0xc0
+ 8020916:	edc9 8a4a 	vstr	s17, [r9, #296]	@ 0x128
+ 802091a:	edc9 8a31 	vstr	s17, [r9, #196]	@ 0xc4
+ 802091e:	edc9 8a4b 	vstr	s17, [r9, #300]	@ 0x12c
+ 8020922:	edc9 8a32 	vstr	s17, [r9, #200]	@ 0xc8
+ 8020926:	edc9 8a4c 	vstr	s17, [r9, #304]	@ 0x130
+ 802092a:	edc9 8a33 	vstr	s17, [r9, #204]	@ 0xcc
+ 802092e:	edc9 8a4d 	vstr	s17, [r9, #308]	@ 0x134
+ 8020932:	edc9 8a34 	vstr	s17, [r9, #208]	@ 0xd0
+ 8020936:	edc9 8a4e 	vstr	s17, [r9, #312]	@ 0x138
+ 802093a:	edc9 8a35 	vstr	s17, [r9, #212]	@ 0xd4
+ 802093e:	edc9 8a4f 	vstr	s17, [r9, #316]	@ 0x13c
+ 8020942:	edc9 8a36 	vstr	s17, [r9, #216]	@ 0xd8
+ 8020946:	edc9 8a50 	vstr	s17, [r9, #320]	@ 0x140
+ 802094a:	edc9 8a37 	vstr	s17, [r9, #220]	@ 0xdc
+ 802094e:	edc9 8a51 	vstr	s17, [r9, #324]	@ 0x144
+ 8020952:	edc9 8a38 	vstr	s17, [r9, #224]	@ 0xe0
+ 8020956:	edc9 8a52 	vstr	s17, [r9, #328]	@ 0x148
+ 802095a:	edc9 8a39 	vstr	s17, [r9, #228]	@ 0xe4
+ 802095e:	edc9 8a53 	vstr	s17, [r9, #332]	@ 0x14c
+ 8020962:	edc9 8a3a 	vstr	s17, [r9, #232]	@ 0xe8
+ 8020966:	edc9 8a54 	vstr	s17, [r9, #336]	@ 0x150
+ 802096a:	edc9 8a3b 	vstr	s17, [r9, #236]	@ 0xec
+ 802096e:	edc9 8a55 	vstr	s17, [r9, #340]	@ 0x154
+ 8020972:	edc9 8a3c 	vstr	s17, [r9, #240]	@ 0xf0
+ 8020976:	edc9 8a56 	vstr	s17, [r9, #344]	@ 0x158
+ 802097a:	edc9 8a3d 	vstr	s17, [r9, #244]	@ 0xf4
+ 802097e:	edc9 8a57 	vstr	s17, [r9, #348]	@ 0x15c
+ 8020982:	edc9 8a3e 	vstr	s17, [r9, #248]	@ 0xf8
+ 8020986:	edc9 8a58 	vstr	s17, [r9, #352]	@ 0x160
+ 802098a:	edc9 8a3f 	vstr	s17, [r9, #252]	@ 0xfc
+ 802098e:	edc9 8a59 	vstr	s17, [r9, #356]	@ 0x164
+ 8020992:	edc9 8a40 	vstr	s17, [r9, #256]	@ 0x100
+ 8020996:	edc9 8a5a 	vstr	s17, [r9, #360]	@ 0x168
+ 802099a:	f8c9 21a0 	str.w	r2, [r9, #416]	@ 0x1a0
+ 802099e:	f04f 0201 	mov.w	r2, #1
+ 80209a2:	edc9 7a75 	vstr	s15, [r9, #468]	@ 0x1d4
+ 80209a6:	edc9 8a41 	vstr	s17, [r9, #260]	@ 0x104
+ 80209aa:	edc9 8a5b 	vstr	s17, [r9, #364]	@ 0x16c
+ 80209ae:	edc9 8a42 	vstr	s17, [r9, #264]	@ 0x108
+ 80209b2:	edc9 8a5c 	vstr	s17, [r9, #368]	@ 0x170
+ 80209b6:	edc9 8a43 	vstr	s17, [r9, #268]	@ 0x10c
+ 80209ba:	edc9 8a5d 	vstr	s17, [r9, #372]	@ 0x174
+ 80209be:	edc9 8a44 	vstr	s17, [r9, #272]	@ 0x110
+ 80209c2:	edc9 8a5e 	vstr	s17, [r9, #376]	@ 0x178
+ 80209c6:	edc9 8a45 	vstr	s17, [r9, #276]	@ 0x114
+ 80209ca:	edc9 8a5f 	vstr	s17, [r9, #380]	@ 0x17c
+ 80209ce:	edc9 8a46 	vstr	s17, [r9, #280]	@ 0x118
+ 80209d2:	edc9 8a60 	vstr	s17, [r9, #384]	@ 0x180
+ 80209d6:	edc9 8a47 	vstr	s17, [r9, #284]	@ 0x11c
+ 80209da:	edc9 8a61 	vstr	s17, [r9, #388]	@ 0x184
+ 80209de:	edc9 8a48 	vstr	s17, [r9, #288]	@ 0x120
+ 80209e2:	edc9 8a62 	vstr	s17, [r9, #392]	@ 0x188
+ 80209e6:	edc9 8a49 	vstr	s17, [r9, #292]	@ 0x124
+ 80209ea:	edc9 8a63 	vstr	s17, [r9, #396]	@ 0x18c
+ 80209ee:	f889 81a4 	strb.w	r8, [r9, #420]	@ 0x1a4
+ 80209f2:	f8c9 81a6 	str.w	r8, [r9, #422]	@ 0x1a6
+ 80209f6:	edc9 8a6c 	vstr	s17, [r9, #432]	@ 0x1b0
+ 80209fa:	edc9 8a76 	vstr	s17, [r9, #472]	@ 0x1d8
+ 80209fe:	edc9 8a77 	vstr	s17, [r9, #476]	@ 0x1dc
+ 8020a02:	edc9 8a78 	vstr	s17, [r9, #480]	@ 0x1e0
+ 8020a06:	edc9 8a79 	vstr	s17, [r9, #484]	@ 0x1e4
+ 8020a0a:	edc9 8a7a 	vstr	s17, [r9, #488]	@ 0x1e8
+ 8020a0e:	edc9 8a7b 	vstr	s17, [r9, #492]	@ 0x1ec
+ 8020a12:	edc9 8a7c 	vstr	s17, [r9, #496]	@ 0x1f0
+ 8020a16:	edc9 8a7d 	vstr	s17, [r9, #500]	@ 0x1f4
+ 8020a1a:	edc9 8a6d 	vstr	s17, [r9, #436]	@ 0x1b4
+ 8020a1e:	edc9 8a7e 	vstr	s17, [r9, #504]	@ 0x1f8
+ 8020a22:	edc9 7a7f 	vstr	s15, [r9, #508]	@ 0x1fc
+ 8020a26:	edc9 7a89 	vstr	s15, [r9, #548]	@ 0x224
+ 8020a2a:	edc9 7a93 	vstr	s15, [r9, #588]	@ 0x24c
+ 8020a2e:	edc9 8a80 	vstr	s17, [r9, #512]	@ 0x200
+ 8020a32:	edc9 8a81 	vstr	s17, [r9, #516]	@ 0x204
+ 8020a36:	edc9 8a82 	vstr	s17, [r9, #520]	@ 0x208
+ 8020a3a:	edc9 8a83 	vstr	s17, [r9, #524]	@ 0x20c
+ 8020a3e:	edc9 8a84 	vstr	s17, [r9, #528]	@ 0x210
+ 8020a42:	edc9 8a85 	vstr	s17, [r9, #532]	@ 0x214
+ 8020a46:	edc9 8a86 	vstr	s17, [r9, #536]	@ 0x218
+ 8020a4a:	e01f      	b.n	8020a8c <MFX_emptyAttitude+0x3f0>
+ 8020a4c:	0802e3b4 	.word	0x0802e3b4
+ 8020a50:	00000000 	.word	0x00000000
+ 8020a54:	40a00000 	.word	0x40a00000
+ 8020a58:	3a9d4952 	.word	0x3a9d4952
+ 8020a5c:	3ac49ba6 	.word	0x3ac49ba6
+ 8020a60:	3b03126f 	.word	0x3b03126f
+ 8020a64:	3a83126f 	.word	0x3a83126f
+ 8020a68:	3f639581 	.word	0x3f639581
+ 8020a6c:	402ab021 	.word	0x402ab021
+ 8020a70:	3f13f7cf 	.word	0x3f13f7cf
+ 8020a74:	3f2ac083 	.word	0x3f2ac083
+ 8020a78:	01010100 	.word	0x01010100
+ 8020a7c:	41200000 	.word	0x41200000
+ 8020a80:	3f4ccccd 	.word	0x3f4ccccd
+ 8020a84:	3f333333 	.word	0x3f333333
+ 8020a88:	447a0000 	.word	0x447a0000
+ 8020a8c:	edc9 8a6e 	vstr	s17, [r9, #440]	@ 0x1b8
+ 8020a90:	edc9 8a87 	vstr	s17, [r9, #540]	@ 0x21c
+ 8020a94:	edc9 8a88 	vstr	s17, [r9, #544]	@ 0x220
+ 8020a98:	edc9 8a8a 	vstr	s17, [r9, #552]	@ 0x228
+ 8020a9c:	edc9 8a8b 	vstr	s17, [r9, #556]	@ 0x22c
+ 8020aa0:	edc9 8a8c 	vstr	s17, [r9, #560]	@ 0x230
+ 8020aa4:	edc9 8a8d 	vstr	s17, [r9, #564]	@ 0x234
+ 8020aa8:	edc9 8a8e 	vstr	s17, [r9, #568]	@ 0x238
+ 8020aac:	edc9 8a8f 	vstr	s17, [r9, #572]	@ 0x23c
+ 8020ab0:	edc9 8a6f 	vstr	s17, [r9, #444]	@ 0x1bc
+ 8020ab4:	edc9 8a90 	vstr	s17, [r9, #576]	@ 0x240
+ 8020ab8:	edc9 8a91 	vstr	s17, [r9, #580]	@ 0x244
+ 8020abc:	edc9 8a92 	vstr	s17, [r9, #584]	@ 0x248
+ 8020ac0:	edc9 8a94 	vstr	s17, [r9, #592]	@ 0x250
+ 8020ac4:	edc9 8a95 	vstr	s17, [r9, #596]	@ 0x254
+ 8020ac8:	edc9 8a96 	vstr	s17, [r9, #600]	@ 0x258
+ 8020acc:	edc9 8a97 	vstr	s17, [r9, #604]	@ 0x25c
+ 8020ad0:	edc9 8a98 	vstr	s17, [r9, #608]	@ 0x260
+ 8020ad4:	edc9 8a70 	vstr	s17, [r9, #448]	@ 0x1c0
+ 8020ad8:	edc9 8a99 	vstr	s17, [r9, #612]	@ 0x264
+ 8020adc:	edc9 8a9a 	vstr	s17, [r9, #616]	@ 0x268
+ 8020ae0:	edc9 8a9b 	vstr	s17, [r9, #620]	@ 0x26c
+ 8020ae4:	edc9 8a9c 	vstr	s17, [r9, #624]	@ 0x270
+ 8020ae8:	edc9 7a9d 	vstr	s15, [r9, #628]	@ 0x274
+ 8020aec:	edc9 7aa7 	vstr	s15, [r9, #668]	@ 0x29c
+ 8020af0:	edc9 7ab1 	vstr	s15, [r9, #708]	@ 0x2c4
+ 8020af4:	edc9 8a9e 	vstr	s17, [r9, #632]	@ 0x278
+ 8020af8:	edc9 8a9f 	vstr	s17, [r9, #636]	@ 0x27c
+ 8020afc:	edc9 8aa0 	vstr	s17, [r9, #640]	@ 0x280
+ 8020b00:	edc9 8aa1 	vstr	s17, [r9, #644]	@ 0x284
+ 8020b04:	edc9 8a71 	vstr	s17, [r9, #452]	@ 0x1c4
+ 8020b08:	edc9 8aa2 	vstr	s17, [r9, #648]	@ 0x288
+ 8020b0c:	edc9 8aa3 	vstr	s17, [r9, #652]	@ 0x28c
+ 8020b10:	edc9 8aa4 	vstr	s17, [r9, #656]	@ 0x290
+ 8020b14:	edc9 8aa5 	vstr	s17, [r9, #660]	@ 0x294
+ 8020b18:	edc9 8aa6 	vstr	s17, [r9, #664]	@ 0x298
+ 8020b1c:	edc9 8aa8 	vstr	s17, [r9, #672]	@ 0x2a0
+ 8020b20:	edc9 8aa9 	vstr	s17, [r9, #676]	@ 0x2a4
+ 8020b24:	edc9 8aaa 	vstr	s17, [r9, #680]	@ 0x2a8
+ 8020b28:	edc9 8a72 	vstr	s17, [r9, #456]	@ 0x1c8
+ 8020b2c:	edc9 8aab 	vstr	s17, [r9, #684]	@ 0x2ac
+ 8020b30:	edc9 8aac 	vstr	s17, [r9, #688]	@ 0x2b0
+ 8020b34:	edc9 8aad 	vstr	s17, [r9, #692]	@ 0x2b4
+ 8020b38:	edc9 8aae 	vstr	s17, [r9, #696]	@ 0x2b8
+ 8020b3c:	edc9 8aaf 	vstr	s17, [r9, #700]	@ 0x2bc
+ 8020b40:	edc9 8ab0 	vstr	s17, [r9, #704]	@ 0x2c0
+ 8020b44:	edc9 8ab2 	vstr	s17, [r9, #712]	@ 0x2c8
+ 8020b48:	edc9 8ab3 	vstr	s17, [r9, #716]	@ 0x2cc
+ 8020b4c:	edc9 8a73 	vstr	s17, [r9, #460]	@ 0x1cc
+ 8020b50:	edc9 8ab4 	vstr	s17, [r9, #720]	@ 0x2d0
+ 8020b54:	edc9 8ab5 	vstr	s17, [r9, #724]	@ 0x2d4
+ 8020b58:	edc9 8ab6 	vstr	s17, [r9, #728]	@ 0x2d8
+ 8020b5c:	edc9 8ab7 	vstr	s17, [r9, #732]	@ 0x2dc
+ 8020b60:	edc9 8ab8 	vstr	s17, [r9, #736]	@ 0x2e0
+ 8020b64:	edc9 8ab9 	vstr	s17, [r9, #740]	@ 0x2e4
+ 8020b68:	edc9 8aba 	vstr	s17, [r9, #744]	@ 0x2e8
+ 8020b6c:	f889 21ac 	strb.w	r2, [r9, #428]	@ 0x1ac
+ 8020b70:	f50d 624a 	add.w	r2, sp, #3232	@ 0xca0
+ 8020b74:	9202      	str	r2, [sp, #8]
+ 8020b76:	f50d 6233 	add.w	r2, sp, #2864	@ 0xb30
+ 8020b7a:	9201      	str	r2, [sp, #4]
+ 8020b7c:	f509 7a46 	add.w	sl, r9, #792	@ 0x318
+ 8020b80:	f50d 621c 	add.w	r2, sp, #2496	@ 0x9c0
+ 8020b84:	f8cd a00c 	str.w	sl, [sp, #12]
+ 8020b88:	9200      	str	r2, [sp, #0]
+ 8020b8a:	7820      	ldrb	r0, [r4, #0]
+ 8020b8c:	edc9 7abb 	vstr	s15, [r9, #748]	@ 0x2ec
+ 8020b90:	f50d 6305 	add.w	r3, sp, #2128	@ 0x850
+ 8020b94:	f50d 62dc 	add.w	r2, sp, #1760	@ 0x6e0
+ 8020b98:	f20d 61bc 	addw	r1, sp, #1724	@ 0x6bc
+ 8020b9c:	edc9 7ac5 	vstr	s15, [r9, #788]	@ 0x314
+ 8020ba0:	edc9 8abc 	vstr	s17, [r9, #752]	@ 0x2f0
+ 8020ba4:	edc9 8a74 	vstr	s17, [r9, #464]	@ 0x1d0
+ 8020ba8:	edc9 8abd 	vstr	s17, [r9, #756]	@ 0x2f4
+ 8020bac:	edc9 8abe 	vstr	s17, [r9, #760]	@ 0x2f8
+ 8020bb0:	edc9 8abf 	vstr	s17, [r9, #764]	@ 0x2fc
+ 8020bb4:	edc9 8ac0 	vstr	s17, [r9, #768]	@ 0x300
+ 8020bb8:	edc9 8ac1 	vstr	s17, [r9, #772]	@ 0x304
+ 8020bbc:	edc9 8ac2 	vstr	s17, [r9, #776]	@ 0x308
+ 8020bc0:	edc9 8ac3 	vstr	s17, [r9, #780]	@ 0x30c
+ 8020bc4:	edc9 8ac4 	vstr	s17, [r9, #784]	@ 0x310
+ 8020bc8:	f7fd fe08 	bl	801e7dc <DataHist_parameters>
+ 8020bcc:	f609 1344 	addw	r3, r9, #2372	@ 0x944
+ 8020bd0:	f509 6216 	add.w	r2, r9, #2400	@ 0x960
+ 8020bd4:	f609 1168 	addw	r1, r9, #2408	@ 0x968
+ 8020bd8:	f509 6017 	add.w	r0, r9, #2416	@ 0x970
+ 8020bdc:	f10d 0c20 	add.w	ip, sp, #32
+ 8020be0:	9304      	str	r3, [sp, #16]
+ 8020be2:	9205      	str	r2, [sp, #20]
+ 8020be4:	9106      	str	r1, [sp, #24]
+ 8020be6:	9007      	str	r0, [sp, #28]
+ 8020be8:	e8bc 000f 	ldmia.w	ip!, {r0, r1, r2, r3}
+ 8020bec:	f8c9 393c 	str.w	r3, [r9, #2364]	@ 0x93c
+ 8020bf0:	9b04      	ldr	r3, [sp, #16]
+ 8020bf2:	f8c9 0930 	str.w	r0, [r9, #2352]	@ 0x930
+ 8020bf6:	f8c9 1934 	str.w	r1, [r9, #2356]	@ 0x934
+ 8020bfa:	f8c9 2938 	str.w	r2, [r9, #2360]	@ 0x938
+ 8020bfe:	9906      	ldr	r1, [sp, #24]
+ 8020c00:	9a05      	ldr	r2, [sp, #20]
+ 8020c02:	9807      	ldr	r0, [sp, #28]
+ 8020c04:	f509 6b14 	add.w	fp, r9, #2368	@ 0x940
+ 8020c08:	f609 1a5c 	addw	sl, r9, #2396	@ 0x95c
+ 8020c0c:	edcb 8a00 	vstr	s17, [fp]
+ 8020c10:	f609 1748 	addw	r7, r9, #2376	@ 0x948
+ 8020c14:	edca 8a00 	vstr	s17, [sl]
+ 8020c18:	f609 1664 	addw	r6, r9, #2404	@ 0x964
+ 8020c1c:	edc3 8a00 	vstr	s17, [r3]
+ 8020c20:	f609 1554 	addw	r5, r9, #2388	@ 0x954
+ 8020c24:	f609 1458 	addw	r4, r9, #2392	@ 0x958
+ 8020c28:	f609 1e6c 	addw	lr, r9, #2412	@ 0x96c
+ 8020c2c:	230a      	movs	r3, #10
+ 8020c2e:	edc2 8a00 	vstr	s17, [r2]
+ 8020c32:	edc7 8a00 	vstr	s17, [r7]
+ 8020c36:	edc6 8a00 	vstr	s17, [r6]
+ 8020c3a:	f8c9 894c 	str.w	r8, [r9, #2380]	@ 0x94c
+ 8020c3e:	f8a9 8950 	strh.w	r8, [r9, #2384]	@ 0x950
+ 8020c42:	edc5 8a00 	vstr	s17, [r5]
+ 8020c46:	ed84 8a00 	vstr	s16, [r4]
+ 8020c4a:	edc1 8a00 	vstr	s17, [r1]
+ 8020c4e:	edc0 8a00 	vstr	s17, [r0]
+ 8020c52:	edce 8a00 	vstr	s17, [lr]
+ 8020c56:	f8c9 3974 	str.w	r3, [r9, #2420]	@ 0x974
+ 8020c5a:	f889 8978 	strb.w	r8, [r9, #2424]	@ 0x978
+ 8020c5e:	f60d 4dd4 	addw	sp, sp, #3284	@ 0xcd4
+ 8020c62:	ecbd 8b02 	vpop	{d8}
+ 8020c66:	e8bd 8ff0 	ldmia.w	sp!, {r4, r5, r6, r7, r8, r9, sl, fp, pc}
+;
+; --- MotionFX_initialize @ 0x0802763c  size=0x170 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+0802763c <MotionFX_initialize>:
+ 802763c:	4a4b      	ldr	r2, [pc, #300]	@ (802776c <MotionFX_initialize+0x130>)
+ 802763e:	6813      	ldr	r3, [r2, #0]
+ 8027640:	f04f 2ce0 	mov.w	ip, #3758153728	@ 0xe000e000
+ 8027644:	f023 0301 	bic.w	r3, r3, #1
+ 8027648:	b530      	push	{r4, r5, lr}
+ 802764a:	6013      	str	r3, [r2, #0]
+ 802764c:	f8dc 3d00 	ldr.w	r3, [ip, #3328]	@ 0xd00
+ 8027650:	f64f 71f0 	movw	r1, #65520	@ 0xfff0
+ 8027654:	400b      	ands	r3, r1
+ 8027656:	f24c 2240 	movw	r2, #49728	@ 0xc240
+ 802765a:	4293      	cmp	r3, r2
+ 802765c:	b085      	sub	sp, #20
+ 802765e:	4604      	mov	r4, r0
+ 8027660:	d013      	beq.n	802768a <MotionFX_initialize+0x4e>
+ 8027662:	f8dc 3d00 	ldr.w	r3, [ip, #3328]	@ 0xd00
+ 8027666:	f24c 2270 	movw	r2, #49776	@ 0xc270
+ 802766a:	400b      	ands	r3, r1
+ 802766c:	4293      	cmp	r3, r2
+ 802766e:	d00c      	beq.n	802768a <MotionFX_initialize+0x4e>
+ 8027670:	4a3f      	ldr	r2, [pc, #252]	@ (8027770 <MotionFX_initialize+0x134>)
+ 8027672:	2301      	movs	r3, #1
+ 8027674:	6093      	str	r3, [r2, #8]
+ 8027676:	6893      	ldr	r3, [r2, #8]
+ 8027678:	2b00      	cmp	r3, #0
+ 802767a:	d1fc      	bne.n	8027676 <MotionFX_initialize+0x3a>
+ 802767c:	4b3d      	ldr	r3, [pc, #244]	@ (8027774 <MotionFX_initialize+0x138>)
+ 802767e:	6013      	str	r3, [r2, #0]
+ 8027680:	6812      	ldr	r2, [r2, #0]
+ 8027682:	4b3d      	ldr	r3, [pc, #244]	@ (8027778 <MotionFX_initialize+0x13c>)
+ 8027684:	429a      	cmp	r2, r3
+ 8027686:	d02c      	beq.n	80276e2 <MotionFX_initialize+0xa6>
+ 8027688:	e7fe      	b.n	8027688 <MotionFX_initialize+0x4c>
+ 802768a:	4b3c      	ldr	r3, [pc, #240]	@ (802777c <MotionFX_initialize+0x140>)
+ 802768c:	681b      	ldr	r3, [r3, #0]
+ 802768e:	2b00      	cmp	r3, #0
+ 8027690:	d1ee      	bne.n	8027670 <MotionFX_initialize+0x34>
+ 8027692:	4a3b      	ldr	r2, [pc, #236]	@ (8027780 <MotionFX_initialize+0x144>)
+ 8027694:	6813      	ldr	r3, [r2, #0]
+ 8027696:	f3c3 030b 	ubfx	r3, r3, #0, #12
+ 802769a:	f5b3 6f8a 	cmp.w	r3, #1104	@ 0x450
+ 802769e:	d054      	beq.n	802774a <MotionFX_initialize+0x10e>
+ 80276a0:	6813      	ldr	r3, [r2, #0]
+ 80276a2:	f240 4183 	movw	r1, #1155	@ 0x483
+ 80276a6:	f3c3 030b 	ubfx	r3, r3, #0, #12
+ 80276aa:	428b      	cmp	r3, r1
+ 80276ac:	d04d      	beq.n	802774a <MotionFX_initialize+0x10e>
+ 80276ae:	6813      	ldr	r3, [r2, #0]
+ 80276b0:	f240 4285 	movw	r2, #1157	@ 0x485
+ 80276b4:	f3c3 030b 	ubfx	r3, r3, #0, #12
+ 80276b8:	4293      	cmp	r3, r2
+ 80276ba:	d046      	beq.n	802774a <MotionFX_initialize+0x10e>
+ 80276bc:	4b31      	ldr	r3, [pc, #196]	@ (8027784 <MotionFX_initialize+0x148>)
+ 80276be:	681b      	ldr	r3, [r3, #0]
+ 80276c0:	f3c3 030b 	ubfx	r3, r3, #0, #12
+ 80276c4:	f5b3 6fa0 	cmp.w	r3, #1280	@ 0x500
+ 80276c8:	d1d2      	bne.n	8027670 <MotionFX_initialize+0x34>
+ 80276ca:	4a2f      	ldr	r2, [pc, #188]	@ (8027788 <MotionFX_initialize+0x14c>)
+ 80276cc:	2301      	movs	r3, #1
+ 80276ce:	6093      	str	r3, [r2, #8]
+ 80276d0:	6893      	ldr	r3, [r2, #8]
+ 80276d2:	2b00      	cmp	r3, #0
+ 80276d4:	d1fc      	bne.n	80276d0 <MotionFX_initialize+0x94>
+ 80276d6:	4b27      	ldr	r3, [pc, #156]	@ (8027774 <MotionFX_initialize+0x138>)
+ 80276d8:	6013      	str	r3, [r2, #0]
+ 80276da:	6812      	ldr	r2, [r2, #0]
+ 80276dc:	4b26      	ldr	r3, [pc, #152]	@ (8027778 <MotionFX_initialize+0x13c>)
+ 80276de:	429a      	cmp	r2, r3
+ 80276e0:	d1d2      	bne.n	8027688 <MotionFX_initialize+0x4c>
+ 80276e2:	4b2a      	ldr	r3, [pc, #168]	@ (802778c <MotionFX_initialize+0x150>)
+ 80276e4:	4a2a      	ldr	r2, [pc, #168]	@ (8027790 <MotionFX_initialize+0x154>)
+ 80276e6:	9303      	str	r3, [sp, #12]
+ 80276e8:	2501      	movs	r5, #1
+ 80276ea:	4620      	mov	r0, r4
+ 80276ec:	e9cd 3301 	strd	r3, r3, [sp, #4]
+ 80276f0:	f882 53c4 	strb.w	r5, [r2, #964]	@ 0x3c4
+ 80276f4:	f7f8 ffd2 	bl	802069c <MFX_emptyAttitude>
+ 80276f8:	a901      	add	r1, sp, #4
+ 80276fa:	f104 003a 	add.w	r0, r4, #58	@ 0x3a
+ 80276fe:	f7f7 fae7 	bl	801ecd0 <updateOrientation>
+ 8027702:	a903      	add	r1, sp, #12
+ 8027704:	f104 0043 	add.w	r0, r4, #67	@ 0x43
+ 8027708:	f7f7 fae2 	bl	801ecd0 <updateOrientation>
+ 802770c:	a902      	add	r1, sp, #8
+ 802770e:	f104 004c 	add.w	r0, r4, #76	@ 0x4c
+ 8027712:	f7f7 fadd 	bl	801ecd0 <updateOrientation>
+ 8027716:	4b1f      	ldr	r3, [pc, #124]	@ (8027794 <MotionFX_initialize+0x158>)
+ 8027718:	491f      	ldr	r1, [pc, #124]	@ (8027798 <MotionFX_initialize+0x15c>)
+ 802771a:	61a3      	str	r3, [r4, #24]
+ 802771c:	4b1f      	ldr	r3, [pc, #124]	@ (802779c <MotionFX_initialize+0x160>)
+ 802771e:	4a20      	ldr	r2, [pc, #128]	@ (80277a0 <MotionFX_initialize+0x164>)
+ 8027720:	62a1      	str	r1, [r4, #40]	@ 0x28
+ 8027722:	6223      	str	r3, [r4, #32]
+ 8027724:	491f      	ldr	r1, [pc, #124]	@ (80277a4 <MotionFX_initialize+0x168>)
+ 8027726:	61e2      	str	r2, [r4, #28]
+ 8027728:	f44f 7380 	mov.w	r3, #256	@ 0x100
+ 802772c:	f04f 507f 	mov.w	r0, #1069547520	@ 0x3fc00000
+ 8027730:	f44f 7281 	mov.w	r2, #258	@ 0x102
+ 8027734:	8723      	strh	r3, [r4, #56]	@ 0x38
+ 8027736:	f240 1301 	movw	r3, #257	@ 0x101
+ 802773a:	62e0      	str	r0, [r4, #44]	@ 0x2c
+ 802773c:	6361      	str	r1, [r4, #52]	@ 0x34
+ 802773e:	80a2      	strh	r2, [r4, #4]
+ 8027740:	f8a4 300d 	strh.w	r3, [r4, #13]
+ 8027744:	73e5      	strb	r5, [r4, #15]
+ 8027746:	b005      	add	sp, #20
+ 8027748:	bd30      	pop	{r4, r5, pc}
+ 802774a:	4a17      	ldr	r2, [pc, #92]	@ (80277a8 <MotionFX_initialize+0x16c>)
+ 802774c:	2301      	movs	r3, #1
+ 802774e:	f8c2 3c08 	str.w	r3, [r2, #3080]	@ 0xc08
+ 8027752:	f8d2 3c08 	ldr.w	r3, [r2, #3080]	@ 0xc08
+ 8027756:	2b00      	cmp	r3, #0
+ 8027758:	d1fb      	bne.n	8027752 <MotionFX_initialize+0x116>
+ 802775a:	4b06      	ldr	r3, [pc, #24]	@ (8027774 <MotionFX_initialize+0x138>)
+ 802775c:	f8c2 3c00 	str.w	r3, [r2, #3072]	@ 0xc00
+ 8027760:	f8d2 2c00 	ldr.w	r2, [r2, #3072]	@ 0xc00
+ 8027764:	4b04      	ldr	r3, [pc, #16]	@ (8027778 <MotionFX_initialize+0x13c>)
+ 8027766:	429a      	cmp	r2, r3
+ 8027768:	d0bb      	beq.n	80276e2 <MotionFX_initialize+0xa6>
+ 802776a:	e78d      	b.n	8027688 <MotionFX_initialize+0x4c>
+ 802776c:	e0002000 	.word	0xe0002000
+ 8027770:	40023000 	.word	0x40023000
+ 8027774:	f407a5c2 	.word	0xf407a5c2
+ 8027778:	b5e8b5cd 	.word	0xb5e8b5cd
+ 802777c:	e0042000 	.word	0xe0042000
+ 8027780:	5c001000 	.word	0x5c001000
+ 8027784:	50081000 	.word	0x50081000
+ 8027788:	4c004000 	.word	0x4c004000
+ 802778c:	00756e65 	.word	0x00756e65
+ 8027790:	20000254 	.word	0x20000254
+ 8027794:	3a51b717 	.word	0x3a51b717
+ 8027798:	3f666666 	.word	0x3f666666
+ 802779c:	3b378034 	.word	0x3b378034
+ 80277a0:	3a378034 	.word	0x3a378034
+ 80277a4:	3f2ac083 	.word	0x3f2ac083
+ 80277a8:	58024000 	.word	0x58024000
+;
+; --- MotionFX_setKnobs @ 0x080277ac  size=0x98 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+080277ac <MotionFX_setKnobs>:
+ 80277ac:	4b24      	ldr	r3, [pc, #144]	@ (8027840 <MotionFX_setKnobs+0x94>)
+ 80277ae:	f893 23c4 	ldrb.w	r2, [r3, #964]	@ 0x3c4
+ 80277b2:	b902      	cbnz	r2, 80277b6 <MotionFX_setKnobs+0xa>
+ 80277b4:	4770      	bx	lr
+ 80277b6:	460b      	mov	r3, r1
+ 80277b8:	2900      	cmp	r1, #0
+ 80277ba:	d0fb      	beq.n	80277b4 <MotionFX_setKnobs+0x8>
+ 80277bc:	b510      	push	{r4, lr}
+ 80277be:	4604      	mov	r4, r0
+ 80277c0:	689a      	ldr	r2, [r3, #8]
+ 80277c2:	6808      	ldr	r0, [r1, #0]
+ 80277c4:	6849      	ldr	r1, [r1, #4]
+ 80277c6:	62e1      	str	r1, [r4, #44]	@ 0x2c
+ 80277c8:	62a0      	str	r0, [r4, #40]	@ 0x28
+ 80277ca:	6362      	str	r2, [r4, #52]	@ 0x34
+ 80277cc:	7b1a      	ldrb	r2, [r3, #12]
+ 80277ce:	7162      	strb	r2, [r4, #5]
+ 80277d0:	6918      	ldr	r0, [r3, #16]
+ 80277d2:	6959      	ldr	r1, [r3, #20]
+ 80277d4:	699a      	ldr	r2, [r3, #24]
+ 80277d6:	6222      	str	r2, [r4, #32]
+ 80277d8:	61a0      	str	r0, [r4, #24]
+ 80277da:	61e1      	str	r1, [r4, #28]
+ 80277dc:	7f1a      	ldrb	r2, [r3, #28]
+ 80277de:	7122      	strb	r2, [r4, #4]
+ 80277e0:	f893 2029 	ldrb.w	r2, [r3, #41]	@ 0x29
+ 80277e4:	f884 2038 	strb.w	r2, [r4, #56]	@ 0x38
+ 80277e8:	6ada      	ldr	r2, [r3, #44]	@ 0x2c
+ 80277ea:	f884 2978 	strb.w	r2, [r4, #2424]	@ 0x978
+ 80277ee:	b084      	sub	sp, #16
+ 80277f0:	f8b3 101d 	ldrh.w	r1, [r3, #29]
+ 80277f4:	7fda      	ldrb	r2, [r3, #31]
+ 80277f6:	f88d 2006 	strb.w	r2, [sp, #6]
+ 80277fa:	f8ad 1004 	strh.w	r1, [sp, #4]
+ 80277fe:	f8b3 2021 	ldrh.w	r2, [r3, #33]	@ 0x21
+ 8027802:	f8ad 2008 	strh.w	r2, [sp, #8]
+ 8027806:	f893 2023 	ldrb.w	r2, [r3, #35]	@ 0x23
+ 802780a:	f88d 200a 	strb.w	r2, [sp, #10]
+ 802780e:	f8b3 2025 	ldrh.w	r2, [r3, #37]	@ 0x25
+ 8027812:	f8ad 200c 	strh.w	r2, [sp, #12]
+ 8027816:	f893 3027 	ldrb.w	r3, [r3, #39]	@ 0x27
+ 802781a:	f88d 300e 	strb.w	r3, [sp, #14]
+ 802781e:	a901      	add	r1, sp, #4
+ 8027820:	f104 003a 	add.w	r0, r4, #58	@ 0x3a
+ 8027824:	f7f7 fa54 	bl	801ecd0 <updateOrientation>
+ 8027828:	a903      	add	r1, sp, #12
+ 802782a:	f104 0043 	add.w	r0, r4, #67	@ 0x43
+ 802782e:	f7f7 fa4f 	bl	801ecd0 <updateOrientation>
+ 8027832:	a902      	add	r1, sp, #8
+ 8027834:	f104 004c 	add.w	r0, r4, #76	@ 0x4c
+ 8027838:	f7f7 fa4a 	bl	801ecd0 <updateOrientation>
+ 802783c:	b004      	add	sp, #16
+ 802783e:	bd10      	pop	{r4, pc}
+ 8027840:	20000254 	.word	0x20000254
+;
+; --- MotionFX_getKnobs @ 0x08027844  size=0x7c ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+08027844 <MotionFX_getKnobs>:
+ 8027844:	4b1d      	ldr	r3, [pc, #116]	@ (80278bc <MotionFX_getKnobs+0x78>)
+ 8027846:	f893 33c4 	ldrb.w	r3, [r3, #964]	@ 0x3c4
+ 802784a:	b903      	cbnz	r3, 802784e <MotionFX_getKnobs+0xa>
+ 802784c:	4770      	bx	lr
+ 802784e:	460a      	mov	r2, r1
+ 8027850:	2900      	cmp	r1, #0
+ 8027852:	d0fb      	beq.n	802784c <MotionFX_getKnobs+0x8>
+ 8027854:	b510      	push	{r4, lr}
+ 8027856:	4604      	mov	r4, r0
+ 8027858:	6a80      	ldr	r0, [r0, #40]	@ 0x28
+ 802785a:	6ae1      	ldr	r1, [r4, #44]	@ 0x2c
+ 802785c:	6b63      	ldr	r3, [r4, #52]	@ 0x34
+ 802785e:	6093      	str	r3, [r2, #8]
+ 8027860:	6010      	str	r0, [r2, #0]
+ 8027862:	6051      	str	r1, [r2, #4]
+ 8027864:	7963      	ldrb	r3, [r4, #5]
+ 8027866:	7313      	strb	r3, [r2, #12]
+ 8027868:	69a0      	ldr	r0, [r4, #24]
+ 802786a:	69e1      	ldr	r1, [r4, #28]
+ 802786c:	6a23      	ldr	r3, [r4, #32]
+ 802786e:	6193      	str	r3, [r2, #24]
+ 8027870:	6110      	str	r0, [r2, #16]
+ 8027872:	6151      	str	r1, [r2, #20]
+ 8027874:	7923      	ldrb	r3, [r4, #4]
+ 8027876:	7713      	strb	r3, [r2, #28]
+ 8027878:	f894 3038 	ldrb.w	r3, [r4, #56]	@ 0x38
+ 802787c:	f882 3029 	strb.w	r3, [r2, #41]	@ 0x29
+ 8027880:	f894 3978 	ldrb.w	r3, [r4, #2424]	@ 0x978
+ 8027884:	62d3      	str	r3, [r2, #44]	@ 0x2c
+ 8027886:	f102 011d 	add.w	r1, r2, #29
+ 802788a:	f104 003a 	add.w	r0, r4, #58	@ 0x3a
+ 802788e:	f7f7 f8b3 	bl	801e9f8 <findAxis>
+ 8027892:	f102 0121 	add.w	r1, r2, #33	@ 0x21
+ 8027896:	f104 004c 	add.w	r0, r4, #76	@ 0x4c
+ 802789a:	f7f7 f8ad 	bl	801e9f8 <findAxis>
+ 802789e:	f102 0125 	add.w	r1, r2, #37	@ 0x25
+ 80278a2:	f104 0043 	add.w	r0, r4, #67	@ 0x43
+ 80278a6:	f7f7 f8a7 	bl	801e9f8 <findAxis>
+ 80278aa:	2300      	movs	r3, #0
+ 80278ac:	f882 3020 	strb.w	r3, [r2, #32]
+ 80278b0:	f882 3024 	strb.w	r3, [r2, #36]	@ 0x24
+ 80278b4:	f882 3028 	strb.w	r3, [r2, #40]	@ 0x28
+ 80278b8:	bd10      	pop	{r4, pc}
+ 80278ba:	bf00      	nop
+ 80278bc:	20000254 	.word	0x20000254
+;
+; --- MotionFX_enable_6X @ 0x080278c0  size=0x40 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+080278c0 <MotionFX_enable_6X>:
+ 80278c0:	4b0e      	ldr	r3, [pc, #56]	@ (80278fc <MotionFX_enable_6X+0x3c>)
+ 80278c2:	f893 33c4 	ldrb.w	r3, [r3, #964]	@ 0x3c4
+ 80278c6:	b903      	cbnz	r3, 80278ca <MotionFX_enable_6X+0xa>
+ 80278c8:	4770      	bx	lr
+ 80278ca:	2900      	cmp	r1, #0
+ 80278cc:	d0fc      	beq.n	80278c8 <MotionFX_enable_6X+0x8>
+ 80278ce:	b530      	push	{r4, r5, lr}
+ 80278d0:	1d05      	adds	r5, r0, #4
+ 80278d2:	b099      	sub	sp, #100	@ 0x64
+ 80278d4:	4604      	mov	r4, r0
+ 80278d6:	4629      	mov	r1, r5
+ 80278d8:	225c      	movs	r2, #92	@ 0x5c
+ 80278da:	a801      	add	r0, sp, #4
+ 80278dc:	f000 ffc5 	bl	802886a <memcpy>
+ 80278e0:	4620      	mov	r0, r4
+ 80278e2:	f7f8 fedb 	bl	802069c <MFX_emptyAttitude>
+ 80278e6:	225c      	movs	r2, #92	@ 0x5c
+ 80278e8:	a901      	add	r1, sp, #4
+ 80278ea:	4628      	mov	r0, r5
+ 80278ec:	f000 ffbd 	bl	802886a <memcpy>
+ 80278f0:	2300      	movs	r3, #0
+ 80278f2:	f884 3039 	strb.w	r3, [r4, #57]	@ 0x39
+ 80278f6:	7363      	strb	r3, [r4, #13]
+ 80278f8:	b019      	add	sp, #100	@ 0x64
+ 80278fa:	bd30      	pop	{r4, r5, pc}
+ 80278fc:	20000254 	.word	0x20000254
+;
+; --- MotionFX_enable_9X @ 0x08027900  size=0x40 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+08027900 <MotionFX_enable_9X>:
+ 8027900:	4b0e      	ldr	r3, [pc, #56]	@ (802793c <MotionFX_enable_9X+0x3c>)
+ 8027902:	f893 33c4 	ldrb.w	r3, [r3, #964]	@ 0x3c4
+ 8027906:	b903      	cbnz	r3, 802790a <MotionFX_enable_9X+0xa>
+ 8027908:	4770      	bx	lr
+ 802790a:	2900      	cmp	r1, #0
+ 802790c:	d0fc      	beq.n	8027908 <MotionFX_enable_9X+0x8>
+ 802790e:	b530      	push	{r4, r5, lr}
+ 8027910:	1d05      	adds	r5, r0, #4
+ 8027912:	b099      	sub	sp, #100	@ 0x64
+ 8027914:	4604      	mov	r4, r0
+ 8027916:	4629      	mov	r1, r5
+ 8027918:	225c      	movs	r2, #92	@ 0x5c
+ 802791a:	a801      	add	r0, sp, #4
+ 802791c:	f000 ffa5 	bl	802886a <memcpy>
+ 8027920:	4620      	mov	r0, r4
+ 8027922:	f7f8 febb 	bl	802069c <MFX_emptyAttitude>
+ 8027926:	225c      	movs	r2, #92	@ 0x5c
+ 8027928:	a901      	add	r1, sp, #4
+ 802792a:	4628      	mov	r0, r5
+ 802792c:	f000 ff9d 	bl	802886a <memcpy>
+ 8027930:	2301      	movs	r3, #1
+ 8027932:	f884 3039 	strb.w	r3, [r4, #57]	@ 0x39
+ 8027936:	7363      	strb	r3, [r4, #13]
+ 8027938:	b019      	add	sp, #100	@ 0x64
+ 802793a:	bd30      	pop	{r4, r5, pc}
+ 802793c:	20000254 	.word	0x20000254
+;
+; --- MotionFX_update @ 0x08027940  size=0x20 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+08027940 <MotionFX_update>:
+ 8027940:	b430      	push	{r4, r5}
+ 8027942:	4c06      	ldr	r4, [pc, #24]	@ (802795c <MotionFX_update+0x1c>)
+ 8027944:	9d02      	ldr	r5, [sp, #8]
+ 8027946:	f894 43c4 	ldrb.w	r4, [r4, #964]	@ 0x3c4
+ 802794a:	b90c      	cbnz	r4, 8027950 <MotionFX_update+0x10>
+ 802794c:	bc30      	pop	{r4, r5}
+ 802794e:	4770      	bx	lr
+ 8027950:	ed93 0a00 	vldr	s0, [r3]
+ 8027954:	462b      	mov	r3, r5
+ 8027956:	bc30      	pop	{r4, r5}
+ 8027958:	f7f9 b98a 	b.w	8020c70 <iNemoEngine_API_Update>
+ 802795c:	20000254 	.word	0x20000254
+;
+; --- MotionFX_propagate @ 0x08027960  size=0x1f8 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+08027960 <MotionFX_propagate>:
+ 8027960:	b5f0      	push	{r4, r5, r6, r7, lr}
+ 8027962:	ed2d 8b06 	vpush	{d8-d10}
+ 8027966:	4c79      	ldr	r4, [pc, #484]	@ (8027b4c <MotionFX_propagate+0x1ec>)
+ 8027968:	f894 63c4 	ldrb.w	r6, [r4, #964]	@ 0x3c4
+ 802796c:	b09d      	sub	sp, #116	@ 0x74
+ 802796e:	b91e      	cbnz	r6, 8027978 <MotionFX_propagate+0x18>
+ 8027970:	b01d      	add	sp, #116	@ 0x74
+ 8027972:	ecbd 8b06 	vpop	{d8-d10}
+ 8027976:	bdf0      	pop	{r4, r5, r6, r7, pc}
+ 8027978:	4694      	mov	ip, r2
+ 802797a:	4604      	mov	r4, r0
+ 802797c:	460d      	mov	r5, r1
+ 802797e:	68d0      	ldr	r0, [r2, #12]
+ 8027980:	6911      	ldr	r1, [r2, #16]
+ 8027982:	6952      	ldr	r2, [r2, #20]
+ 8027984:	ed93 0a00 	vldr	s0, [r3]
+ 8027988:	ab0f      	add	r3, sp, #60	@ 0x3c
+ 802798a:	c307      	stmia	r3!, {r0, r1, r2}
+ 802798c:	f8dc 0018 	ldr.w	r0, [ip, #24]
+ 8027990:	f8dc 101c 	ldr.w	r1, [ip, #28]
+ 8027994:	f8dc 2020 	ldr.w	r2, [ip, #32]
+ 8027998:	c307      	stmia	r3!, {r0, r1, r2}
+ 802799a:	aa12      	add	r2, sp, #72	@ 0x48
+ 802799c:	f104 014c 	add.w	r1, r4, #76	@ 0x4c
+ 80279a0:	a802      	add	r0, sp, #8
+ 80279a2:	f7f6 ffc7 	bl	801e934 <rotVect>
+ 80279a6:	7923      	ldrb	r3, [r4, #4]
+ 80279a8:	f104 073a 	add.w	r7, r4, #58	@ 0x3a
+ 80279ac:	2b00      	cmp	r3, #0
+ 80279ae:	f000 80bf 	beq.w	8027b30 <MotionFX_propagate+0x1d0>
+ 80279b2:	ee07 3a90 	vmov	s15, r3
+ 80279b6:	eef8 7ae7 	vcvt.f32.s32	s15, s15
+ 80279ba:	eeb7 7a00 	vmov.f32	s14, #112	@ 0x3f800000  1.0
+ 80279be:	eec7 6a27 	vdiv.f32	s13, s14, s15
+ 80279c2:	f604 135c 	addw	r3, r4, #2396	@ 0x95c
+ 80279c6:	f504 6613 	add.w	r6, r4, #2352	@ 0x930
+ 80279ca:	edd3 7a00 	vldr	s15, [r3]
+ 80279ce:	eddd 5a02 	vldr	s11, [sp, #8]
+ 80279d2:	ed9d 5a03 	vldr	s10, [sp, #12]
+ 80279d6:	ed9d 6a04 	vldr	s12, [sp, #16]
+ 80279da:	ed9f 7a5d 	vldr	s14, [pc, #372]	@ 8027b50 <MotionFX_propagate+0x1f0>
+ 80279de:	eddf 4a5d 	vldr	s9, [pc, #372]	@ 8027b54 <MotionFX_propagate+0x1f4>
+ 80279e2:	eee5 7aa6 	vfma.f32	s15, s11, s13
+ 80279e6:	eeb6 4a00 	vmov.f32	s8, #96	@ 0x3f000000  0.5
+ 80279ea:	edc3 7a00 	vstr	s15, [r3]
+ 80279ee:	f504 6316 	add.w	r3, r4, #2400	@ 0x960
+ 80279f2:	edd3 7a00 	vldr	s15, [r3]
+ 80279f6:	eee5 7a26 	vfma.f32	s15, s10, s13
+ 80279fa:	ee20 0a04 	vmul.f32	s0, s0, s8
+ 80279fe:	edc3 7a00 	vstr	s15, [r3]
+ 8027a02:	f604 1364 	addw	r3, r4, #2404	@ 0x964
+ 8027a06:	edd3 7a00 	vldr	s15, [r3]
+ 8027a0a:	eee6 7a26 	vfma.f32	s15, s12, s13
+ 8027a0e:	edc3 7a00 	vstr	s15, [r3]
+ 8027a12:	f604 1344 	addw	r3, r4, #2372	@ 0x944
+ 8027a16:	edd3 8a00 	vldr	s17, [r3]
+ 8027a1a:	f504 6314 	add.w	r3, r4, #2368	@ 0x940
+ 8027a1e:	ed93 9a00 	vldr	s18, [r3]
+ 8027a22:	eed5 8a07 	vfnms.f32	s17, s10, s14
+ 8027a26:	f604 1348 	addw	r3, r4, #2376	@ 0x948
+ 8027a2a:	ee95 9a87 	vfnms.f32	s18, s11, s14
+ 8027a2e:	ee68 7aa8 	vmul.f32	s15, s17, s17
+ 8027a32:	ed93 8a00 	vldr	s16, [r3]
+ 8027a36:	eee9 7a09 	vfma.f32	s15, s18, s18
+ 8027a3a:	ee96 8a07 	vfnms.f32	s16, s12, s14
+ 8027a3e:	eee8 7a08 	vfma.f32	s15, s16, s16
+ 8027a42:	eef4 7ae4 	vcmpe.f32	s15, s9
+ 8027a46:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8027a4a:	dd76      	ble.n	8027b3a <MotionFX_propagate+0x1da>
+ 8027a4c:	eeb1 aae7 	vsqrt.f32	s20, s15
+ 8027a50:	ee6a 9a00 	vmul.f32	s19, s20, s0
+ 8027a54:	eeb0 0a69 	vmov.f32	s0, s19
+ 8027a58:	f002 f918 	bl	8029c8c <sinf>
+ 8027a5c:	eeb0 7a40 	vmov.f32	s14, s0
+ 8027a60:	eec7 7a0a 	vdiv.f32	s15, s14, s20
+ 8027a64:	eeb0 0a69 	vmov.f32	s0, s19
+ 8027a68:	ee29 9a27 	vmul.f32	s18, s18, s15
+ 8027a6c:	ee68 8aa7 	vmul.f32	s17, s17, s15
+ 8027a70:	ee28 8a27 	vmul.f32	s16, s16, s15
+ 8027a74:	f002 f8ca 	bl	8029c0c <cosf>
+ 8027a78:	a805      	add	r0, sp, #20
+ 8027a7a:	4632      	mov	r2, r6
+ 8027a7c:	4631      	mov	r1, r6
+ 8027a7e:	ed8d 0a08 	vstr	s0, [sp, #32]
+ 8027a82:	ed8d 9a05 	vstr	s18, [sp, #20]
+ 8027a86:	edcd 8a06 	vstr	s17, [sp, #24]
+ 8027a8a:	ed8d 8a07 	vstr	s16, [sp, #28]
+ 8027a8e:	f7f7 f9a3 	bl	801edd8 <qmult>
+ 8027a92:	f604 1c38 	addw	ip, r4, #2360	@ 0x938
+ 8027a96:	ed9c 7a00 	vldr	s14, [ip]
+ 8027a9a:	ed96 6a00 	vldr	s12, [r6]
+ 8027a9e:	f604 1e34 	addw	lr, r4, #2356	@ 0x934
+ 8027aa2:	edde 6a00 	vldr	s13, [lr]
+ 8027aa6:	ee67 7a07 	vmul.f32	s15, s14, s14
+ 8027aaa:	f604 133c 	addw	r3, r4, #2364	@ 0x93c
+ 8027aae:	eee6 7aa6 	vfma.f32	s15, s13, s13
+ 8027ab2:	aa0f      	add	r2, sp, #60	@ 0x3c
+ 8027ab4:	4639      	mov	r1, r7
+ 8027ab6:	edd3 5a00 	vldr	s11, [r3]
+ 8027aba:	eee6 7a06 	vfma.f32	s15, s12, s12
+ 8027abe:	eef7 4a00 	vmov.f32	s9, #112	@ 0x3f800000  1.0
+ 8027ac2:	eee5 7aa5 	vfma.f32	s15, s11, s11
+ 8027ac6:	eeb1 5ae7 	vsqrt.f32	s10, s15
+ 8027aca:	eec4 7a85 	vdiv.f32	s15, s9, s10
+ 8027ace:	ee27 4a86 	vmul.f32	s8, s15, s12
+ 8027ad2:	ee67 4aa6 	vmul.f32	s9, s15, s13
+ 8027ad6:	ee27 5a27 	vmul.f32	s10, s14, s15
+ 8027ada:	ee67 5aa5 	vmul.f32	s11, s15, s11
+ 8027ade:	ed86 4a00 	vstr	s8, [r6]
+ 8027ae2:	edce 4a00 	vstr	s9, [lr]
+ 8027ae6:	ed8c 5a00 	vstr	s10, [ip]
+ 8027aea:	edc3 5a00 	vstr	s11, [r3]
+ 8027aee:	f8b4 3950 	ldrh.w	r3, [r4, #2384]	@ 0x950
+ 8027af2:	3301      	adds	r3, #1
+ 8027af4:	f8a4 3950 	strh.w	r3, [r4, #2384]	@ 0x950
+ 8027af8:	f7f6 ff1c 	bl	801e934 <rotVect>
+ 8027afc:	ed85 4a03 	vstr	s8, [r5, #12]
+ 8027b00:	edc5 4a04 	vstr	s9, [r5, #16]
+ 8027b04:	ed85 5a05 	vstr	s10, [r5, #20]
+ 8027b08:	edc5 5a06 	vstr	s11, [r5, #24]
+ 8027b0c:	f894 2038 	ldrb.w	r2, [r4, #56]	@ 0x38
+ 8027b10:	f105 0328 	add.w	r3, r5, #40	@ 0x28
+ 8027b14:	e9cd 3200 	strd	r3, r2, [sp]
+ 8027b18:	4601      	mov	r1, r0
+ 8027b1a:	f105 031c 	add.w	r3, r5, #28
+ 8027b1e:	462a      	mov	r2, r5
+ 8027b20:	f105 000c 	add.w	r0, r5, #12
+ 8027b24:	f7f8 fcec 	bl	8020500 <output_update>
+ 8027b28:	b01d      	add	sp, #116	@ 0x74
+ 8027b2a:	ecbd 8b06 	vpop	{d8-d10}
+ 8027b2e:	bdf0      	pop	{r4, r5, r6, r7, pc}
+ 8027b30:	2301      	movs	r3, #1
+ 8027b32:	7123      	strb	r3, [r4, #4]
+ 8027b34:	eef7 6a00 	vmov.f32	s13, #112	@ 0x3f800000  1.0
+ 8027b38:	e743      	b.n	80279c2 <MotionFX_propagate+0x62>
+ 8027b3a:	ee29 9a00 	vmul.f32	s18, s18, s0
+ 8027b3e:	ee68 8a80 	vmul.f32	s17, s17, s0
+ 8027b42:	ee28 8a00 	vmul.f32	s16, s16, s0
+ 8027b46:	eeb7 0a00 	vmov.f32	s0, #112	@ 0x3f800000  1.0
+ 8027b4a:	e795      	b.n	8027a78 <MotionFX_propagate+0x118>
+ 8027b4c:	20000254 	.word	0x20000254
+ 8027b50:	3c8efa35 	.word	0x3c8efa35
+ 8027b54:	38d1b718 	.word	0x38d1b718
+;
+; --- MotionFX_MagCal_init @ 0x08027b58  size=0x120 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+08027b58 <MotionFX_MagCal_init>:
+ 8027b58:	b570      	push	{r4, r5, r6, lr}
+ 8027b5a:	4c42      	ldr	r4, [pc, #264]	@ (8027c64 <MotionFX_MagCal_init+0x10c>)
+ 8027b5c:	f894 33c4 	ldrb.w	r3, [r4, #964]	@ 0x3c4
+ 8027b60:	b903      	cbnz	r3, 8027b64 <MotionFX_MagCal_init+0xc>
+ 8027b62:	bd70      	pop	{r4, r5, r6, pc}
+ 8027b64:	1e43      	subs	r3, r0, #1
+ 8027b66:	f5b3 7f7a 	cmp.w	r3, #1000	@ 0x3e8
+ 8027b6a:	4605      	mov	r5, r0
+ 8027b6c:	d2f9      	bcs.n	8027b62 <MotionFX_MagCal_init+0xa>
+ 8027b6e:	2900      	cmp	r1, #0
+ 8027b70:	d139      	bne.n	8027be6 <MotionFX_MagCal_init+0x8e>
+ 8027b72:	f884 1048 	strb.w	r1, [r4, #72]	@ 0x48
+ 8027b76:	f9b4 3002 	ldrsh.w	r3, [r4, #2]
+ 8027b7a:	4a3b      	ldr	r2, [pc, #236]	@ (8027c68 <MotionFX_MagCal_init+0x110>)
+ 8027b7c:	1b5b      	subs	r3, r3, r5
+ 8027b7e:	ee07 3a90 	vmov	s15, r3
+ 8027b82:	eef8 7ae7 	vcvt.f32.s32	s15, s15
+ 8027b86:	23c8      	movs	r3, #200	@ 0xc8
+ 8027b88:	eef0 7ae7 	vabs.f32	s15, s15
+ 8027b8c:	fb93 f3f5 	sdiv	r3, r3, r5
+ 8027b90:	eeb7 7a00 	vmov.f32	s14, #112	@ 0x3f800000  1.0
+ 8027b94:	b2db      	uxtb	r3, r3
+ 8027b96:	2b0f      	cmp	r3, #15
+ 8027b98:	eef4 7ac7 	vcmpe.f32	s15, s14
+ 8027b9c:	bf28      	it	cs
+ 8027b9e:	230f      	movcs	r3, #15
+ 8027ba0:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8027ba4:	6015      	str	r5, [r2, #0]
+ 8027ba6:	f884 37de 	strb.w	r3, [r4, #2014]	@ 0x7de
+ 8027baa:	b22d      	sxth	r5, r5
+ 8027bac:	dc0e      	bgt.n	8027bcc <MotionFX_MagCal_init+0x74>
+ 8027bae:	edd4 7a01 	vldr	s15, [r4, #4]
+ 8027bb2:	eddf 6a2e 	vldr	s13, [pc, #184]	@ 8027c6c <MotionFX_MagCal_init+0x114>
+ 8027bb6:	ed9f 7a2e 	vldr	s14, [pc, #184]	@ 8027c70 <MotionFX_MagCal_init+0x118>
+ 8027bba:	ee77 7ae6 	vsub.f32	s15, s15, s13
+ 8027bbe:	eef0 7ae7 	vabs.f32	s15, s15
+ 8027bc2:	eef4 7ac7 	vcmpe.f32	s15, s14
+ 8027bc6:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8027bca:	dd08      	ble.n	8027bde <MotionFX_MagCal_init+0x86>
+ 8027bcc:	2300      	movs	r3, #0
+ 8027bce:	4a29      	ldr	r2, [pc, #164]	@ (8027c74 <MotionFX_MagCal_init+0x11c>)
+ 8027bd0:	8123      	strh	r3, [r4, #8]
+ 8027bd2:	f44f 6196 	mov.w	r1, #1200	@ 0x4b0
+ 8027bd6:	60e3      	str	r3, [r4, #12]
+ 8027bd8:	8021      	strh	r1, [r4, #0]
+ 8027bda:	8065      	strh	r5, [r4, #2]
+ 8027bdc:	6062      	str	r2, [r4, #4]
+ 8027bde:	2300      	movs	r3, #0
+ 8027be0:	f884 3858 	strb.w	r3, [r4, #2136]	@ 0x858
+ 8027be4:	bd70      	pop	{r4, r5, r6, pc}
+ 8027be6:	2600      	movs	r6, #0
+ 8027be8:	f44f 0302 	mov.w	r3, #8519680	@ 0x820000
+ 8027bec:	e9c4 3602 	strd	r3, r6, [r4, #8]
+ 8027bf0:	f504 7372 	add.w	r3, r4, #968	@ 0x3c8
+ 8027bf4:	f44f 7248 	mov.w	r2, #800	@ 0x320
+ 8027bf8:	4631      	mov	r1, r6
+ 8027bfa:	6123      	str	r3, [r4, #16]
+ 8027bfc:	f104 00a0 	add.w	r0, r4, #160	@ 0xa0
+ 8027c00:	f44f 737a 	mov.w	r3, #1000	@ 0x3e8
+ 8027c04:	f8a4 3050 	strh.w	r3, [r4, #80]	@ 0x50
+ 8027c08:	f884 6048 	strb.w	r6, [r4, #72]	@ 0x48
+ 8027c0c:	64e6      	str	r6, [r4, #76]	@ 0x4c
+ 8027c0e:	82a6      	strh	r6, [r4, #20]
+ 8027c10:	f000 fcfc 	bl	802860c <memset>
+ 8027c14:	225f      	movs	r2, #95	@ 0x5f
+ 8027c16:	f884 20a1 	strb.w	r2, [r4, #161]	@ 0xa1
+ 8027c1a:	f44f 6270 	mov.w	r2, #3840	@ 0xf00
+ 8027c1e:	84a2      	strh	r2, [r4, #36]	@ 0x24
+ 8027c20:	f44f 7280 	mov.w	r2, #256	@ 0x100
+ 8027c24:	23ff      	movs	r3, #255	@ 0xff
+ 8027c26:	f8a4 2054 	strh.w	r2, [r4, #84]	@ 0x54
+ 8027c2a:	4631      	mov	r1, r6
+ 8027c2c:	2230      	movs	r2, #48	@ 0x30
+ 8027c2e:	f104 006c 	add.w	r0, r4, #108	@ 0x6c
+ 8027c32:	f884 30a2 	strb.w	r3, [r4, #162]	@ 0xa2
+ 8027c36:	f884 3026 	strb.w	r3, [r4, #38]	@ 0x26
+ 8027c3a:	e9c4 6606 	strd	r6, r6, [r4, #24]
+ 8027c3e:	6226      	str	r6, [r4, #32]
+ 8027c40:	f000 fce4 	bl	802860c <memset>
+ 8027c44:	f1a5 030a 	sub.w	r3, r5, #10
+ 8027c48:	b29b      	uxth	r3, r3
+ 8027c4a:	f04f 527e 	mov.w	r2, #1065353216	@ 0x3f800000
+ 8027c4e:	2101      	movs	r1, #1
+ 8027c50:	2b32      	cmp	r3, #50	@ 0x32
+ 8027c52:	f884 106d 	strb.w	r1, [r4, #109]	@ 0x6d
+ 8027c56:	67e2      	str	r2, [r4, #124]	@ 0x7c
+ 8027c58:	f8c4 208c 	str.w	r2, [r4, #140]	@ 0x8c
+ 8027c5c:	f8c4 209c 	str.w	r2, [r4, #156]	@ 0x9c
+ 8027c60:	d889      	bhi.n	8027b76 <MotionFX_MagCal_init+0x1e>
+ 8027c62:	e786      	b.n	8027b72 <MotionFX_MagCal_init+0x1a>
+ 8027c64:	20000254 	.word	0x20000254
+ 8027c68:	20000004 	.word	0x20000004
+ 8027c6c:	3dcccccd 	.word	0x3dcccccd
+ 8027c70:	3c23d70a 	.word	0x3c23d70a
+ 8027c74:	3dcccccd 	.word	0x3dcccccd
+;
+; --- MotionFX_MagCal_run @ 0x08027c78  size=0x462 ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+08027c78 <MotionFX_MagCal_run>:
+ 8027c78:	4940      	ldr	r1, [pc, #256]	@ (8027d7c <MotionFX_MagCal_run+0x104>)
+ 8027c7a:	f891 33c4 	ldrb.w	r3, [r1, #964]	@ 0x3c4
+ 8027c7e:	2b00      	cmp	r3, #0
+ 8027c80:	d07b      	beq.n	8027d7a <MotionFX_MagCal_run+0x102>
+ 8027c82:	ed90 7a00 	vldr	s14, [r0]
+ 8027c86:	eddf 7a3e 	vldr	s15, [pc, #248]	@ 8027d80 <MotionFX_MagCal_run+0x108>
+ 8027c8a:	eeb5 7ac0 	vcmpe.f32	s14, #0.0
+ 8027c8e:	ee67 7a27 	vmul.f32	s15, s14, s15
+ 8027c92:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8027c96:	eeb6 7a00 	vmov.f32	s14, #96	@ 0x3f000000  0.5
+ 8027c9a:	bfb4      	ite	lt
+ 8027c9c:	ee77 7ac7 	vsublt.f32	s15, s15, s14
+ 8027ca0:	ee77 7a87 	vaddge.f32	s15, s15, s14
+ 8027ca4:	ed90 7a01 	vldr	s14, [r0, #4]
+ 8027ca8:	eefd 7ae7 	vcvt.s32.f32	s15, s15
+ 8027cac:	eeb5 7ac0 	vcmpe.f32	s14, #0.0
+ 8027cb0:	ee17 ca90 	vmov	ip, s15
+ 8027cb4:	eddf 7a32 	vldr	s15, [pc, #200]	@ 8027d80 <MotionFX_MagCal_run+0x108>
+ 8027cb8:	ee67 7a27 	vmul.f32	s15, s14, s15
+ 8027cbc:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8027cc0:	eeb6 7a00 	vmov.f32	s14, #96	@ 0x3f000000  0.5
+ 8027cc4:	bfb4      	ite	lt
+ 8027cc6:	ee77 7ac7 	vsublt.f32	s15, s15, s14
+ 8027cca:	ee77 7a87 	vaddge.f32	s15, s15, s14
+ 8027cce:	e92d 43f0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, lr}
+ 8027cd2:	eefd 7ae7 	vcvt.s32.f32	s15, s15
+ 8027cd6:	ed90 7a02 	vldr	s14, [r0, #8]
+ 8027cda:	f891 3858 	ldrb.w	r3, [r1, #2136]	@ 0x858
+ 8027cde:	68c0      	ldr	r0, [r0, #12]
+ 8027ce0:	ee17 2a90 	vmov	r2, s15
+ 8027ce4:	eddf 7a26 	vldr	s15, [pc, #152]	@ 8027d80 <MotionFX_MagCal_run+0x108>
+ 8027ce8:	eeb5 7ac0 	vcmpe.f32	s14, #0.0
+ 8027cec:	ee67 7a27 	vmul.f32	s15, s14, s15
+ 8027cf0:	eef1 fa10 	vmrs	APSR_nzcv, fpscr
+ 8027cf4:	eeb6 7a00 	vmov.f32	s14, #96	@ 0x3f000000  0.5
+ 8027cf8:	bfac      	ite	ge
+ 8027cfa:	ee77 7a87 	vaddge.f32	s15, s15, s14
+ 8027cfe:	ee77 7ac7 	vsublt.f32	s15, s15, s14
+ 8027d02:	eefd 7ae7 	vcvt.s32.f32	s15, s15
+ 8027d06:	b38b      	cbz	r3, 8027d6c <MotionFX_MagCal_run+0xf4>
+ 8027d08:	481e      	ldr	r0, [pc, #120]	@ (8027d84 <MotionFX_MagCal_run+0x10c>)
+ 8027d0a:	6800      	ldr	r0, [r0, #0]
+ 8027d0c:	eb01 04c3 	add.w	r4, r1, r3, lsl #3
+ 8027d10:	fb10 f003 	smulbb	r0, r0, r3
+ 8027d14:	f8a4 07e0 	strh.w	r0, [r4, #2016]	@ 0x7e0
+ 8027d18:	00d8      	lsls	r0, r3, #3
+ 8027d1a:	f647 74fe 	movw	r4, #32766	@ 0x7ffe
+ 8027d1e:	ee17 5a90 	vmov	r5, s15
+ 8027d22:	4f19      	ldr	r7, [pc, #100]	@ (8027d88 <MotionFX_MagCal_run+0x110>)
+ 8027d24:	45a4      	cmp	ip, r4
+ 8027d26:	4666      	mov	r6, ip
+ 8027d28:	bfa8      	it	ge
+ 8027d2a:	4626      	movge	r6, r4
+ 8027d2c:	42a5      	cmp	r5, r4
+ 8027d2e:	bfa8      	it	ge
+ 8027d30:	4625      	movge	r5, r4
+ 8027d32:	42be      	cmp	r6, r7
+ 8027d34:	bfb8      	it	lt
+ 8027d36:	463e      	movlt	r6, r7
+ 8027d38:	42ba      	cmp	r2, r7
+ 8027d3a:	db02      	blt.n	8027d42 <MotionFX_MagCal_run+0xca>
+ 8027d3c:	4294      	cmp	r4, r2
+ 8027d3e:	bfa8      	it	ge
+ 8027d40:	4614      	movge	r4, r2
+ 8027d42:	180a      	adds	r2, r1, r0
+ 8027d44:	4810      	ldr	r0, [pc, #64]	@ (8027d88 <MotionFX_MagCal_run+0x110>)
+ 8027d46:	f8a2 67e2 	strh.w	r6, [r2, #2018]	@ 0x7e2
+ 8027d4a:	42a8      	cmp	r0, r5
+ 8027d4c:	bfb8      	it	lt
+ 8027d4e:	4628      	movlt	r0, r5
+ 8027d50:	3301      	adds	r3, #1
+ 8027d52:	f891 57de 	ldrb.w	r5, [r1, #2014]	@ 0x7de
+ 8027d56:	f8a2 47e4 	strh.w	r4, [r2, #2020]	@ 0x7e4
+ 8027d5a:	b2db      	uxtb	r3, r3
+ 8027d5c:	42ab      	cmp	r3, r5
+ 8027d5e:	f881 3858 	strb.w	r3, [r1, #2136]	@ 0x858
+ 8027d62:	f8a2 07e6 	strh.w	r0, [r2, #2022]	@ 0x7e6
+ 8027d66:	d011      	beq.n	8027d8c <MotionFX_MagCal_run+0x114>
+ 8027d68:	e8bd 83f0 	ldmia.w	sp!, {r4, r5, r6, r7, r8, r9, pc}
+ 8027d6c:	f8c1 07d8 	str.w	r0, [r1, #2008]	@ 0x7d8
+ 8027d70:	2001      	movs	r0, #1
+ 8027d72:	f881 07dc 	strb.w	r0, [r1, #2012]	@ 0x7dc
+ 8027d76:	4618      	mov	r0, r3
+ 8027d78:	e7cf      	b.n	8027d1a <MotionFX_MagCal_run+0xa2>
+ 8027d7a:	4770      	bx	lr
+ 8027d7c:	20000254 	.word	0x20000254
+ 8027d80:	43fa0000 	.word	0x43fa0000
+ 8027d84:	20000004 	.word	0x20000004
+ 8027d88:	ffff8002 	.word	0xffff8002
+ 8027d8c:	f891 37dc 	ldrb.w	r3, [r1, #2012]	@ 0x7dc
+ 8027d90:	f8d1 77d8 	ldr.w	r7, [r1, #2008]	@ 0x7d8
+ 8027d94:	2200      	movs	r2, #0
+ 8027d96:	f881 2858 	strb.w	r2, [r1, #2136]	@ 0x858
+ 8027d9a:	2b00      	cmp	r3, #0
+ 8027d9c:	f000 8169 	beq.w	8028072 <MotionFX_MagCal_run+0x3fa>
+ 8027da0:	2d00      	cmp	r5, #0
+ 8027da2:	f000 8166 	beq.w	8028072 <MotionFX_MagCal_run+0x3fa>
+ 8027da6:	894e      	ldrh	r6, [r1, #10]
+ 8027da8:	2e00      	cmp	r6, #0
+ 8027daa:	f000 8162 	beq.w	8028072 <MotionFX_MagCal_run+0x3fa>
+ 8027dae:	890b      	ldrh	r3, [r1, #8]
+ 8027db0:	690c      	ldr	r4, [r1, #16]
+ 8027db2:	42b3      	cmp	r3, r6
+ 8027db4:	bf28      	it	cs
+ 8027db6:	4633      	movcs	r3, r6
+ 8027db8:	3301      	adds	r3, #1
+ 8027dba:	b29b      	uxth	r3, r3
+ 8027dbc:	42b3      	cmp	r3, r6
+ 8027dbe:	bf28      	it	cs
+ 8027dc0:	4633      	movcs	r3, r6
+ 8027dc2:	f06f 4860 	mvn.w	r8, #3758096384	@ 0xe0000000
+ 8027dc6:	eb03 0208 	add.w	r2, r3, r8
+ 8027dca:	f04f 0901 	mov.w	r9, #1
+ 8027dce:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027dd2:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027dd6:	f8d1 c7e2 	ldr.w	ip, [r1, #2018]	@ 0x7e2
+ 8027dda:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027dde:	f9b1 07e6 	ldrsh.w	r0, [r1, #2022]	@ 0x7e6
+ 8027de2:	f8b1 e7e0 	ldrh.w	lr, [r1, #2016]	@ 0x7e0
+ 8027de6:	80d0      	strh	r0, [r2, #6]
+ 8027de8:	454d      	cmp	r5, r9
+ 8027dea:	f000 813a 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027dee:	444b      	add	r3, r9
+ 8027df0:	b29b      	uxth	r3, r3
+ 8027df2:	42b3      	cmp	r3, r6
+ 8027df4:	bf28      	it	cs
+ 8027df6:	4633      	movcs	r3, r6
+ 8027df8:	eb03 0208 	add.w	r2, r3, r8
+ 8027dfc:	2d02      	cmp	r5, #2
+ 8027dfe:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027e02:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027e06:	f8d1 c7ea 	ldr.w	ip, [r1, #2026]	@ 0x7ea
+ 8027e0a:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027e0e:	f9b1 07ee 	ldrsh.w	r0, [r1, #2030]	@ 0x7ee
+ 8027e12:	f8b1 e7e8 	ldrh.w	lr, [r1, #2024]	@ 0x7e8
+ 8027e16:	80d0      	strh	r0, [r2, #6]
+ 8027e18:	f000 8123 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027e1c:	444b      	add	r3, r9
+ 8027e1e:	b29b      	uxth	r3, r3
+ 8027e20:	42b3      	cmp	r3, r6
+ 8027e22:	bf28      	it	cs
+ 8027e24:	4633      	movcs	r3, r6
+ 8027e26:	eb03 0208 	add.w	r2, r3, r8
+ 8027e2a:	2d03      	cmp	r5, #3
+ 8027e2c:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027e30:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027e34:	f8d1 c7f2 	ldr.w	ip, [r1, #2034]	@ 0x7f2
+ 8027e38:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027e3c:	f9b1 07f6 	ldrsh.w	r0, [r1, #2038]	@ 0x7f6
+ 8027e40:	f8b1 e7f0 	ldrh.w	lr, [r1, #2032]	@ 0x7f0
+ 8027e44:	80d0      	strh	r0, [r2, #6]
+ 8027e46:	f000 810c 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027e4a:	444b      	add	r3, r9
+ 8027e4c:	b29b      	uxth	r3, r3
+ 8027e4e:	42b3      	cmp	r3, r6
+ 8027e50:	bf28      	it	cs
+ 8027e52:	4633      	movcs	r3, r6
+ 8027e54:	eb03 0208 	add.w	r2, r3, r8
+ 8027e58:	2d04      	cmp	r5, #4
+ 8027e5a:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027e5e:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027e62:	f8d1 c7fa 	ldr.w	ip, [r1, #2042]	@ 0x7fa
+ 8027e66:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027e6a:	f9b1 07fe 	ldrsh.w	r0, [r1, #2046]	@ 0x7fe
+ 8027e6e:	f8b1 e7f8 	ldrh.w	lr, [r1, #2040]	@ 0x7f8
+ 8027e72:	80d0      	strh	r0, [r2, #6]
+ 8027e74:	f000 80f5 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027e78:	444b      	add	r3, r9
+ 8027e7a:	b29b      	uxth	r3, r3
+ 8027e7c:	42b3      	cmp	r3, r6
+ 8027e7e:	bf28      	it	cs
+ 8027e80:	4633      	movcs	r3, r6
+ 8027e82:	eb03 0208 	add.w	r2, r3, r8
+ 8027e86:	2d05      	cmp	r5, #5
+ 8027e88:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027e8c:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027e90:	f8d1 c802 	ldr.w	ip, [r1, #2050]	@ 0x802
+ 8027e94:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027e98:	f9b1 0806 	ldrsh.w	r0, [r1, #2054]	@ 0x806
+ 8027e9c:	f8b1 e800 	ldrh.w	lr, [r1, #2048]	@ 0x800
+ 8027ea0:	80d0      	strh	r0, [r2, #6]
+ 8027ea2:	f000 80de 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027ea6:	444b      	add	r3, r9
+ 8027ea8:	b29b      	uxth	r3, r3
+ 8027eaa:	42b3      	cmp	r3, r6
+ 8027eac:	bf28      	it	cs
+ 8027eae:	4633      	movcs	r3, r6
+ 8027eb0:	4498      	add	r8, r3
+ 8027eb2:	eb04 02c8 	add.w	r2, r4, r8, lsl #3
+ 8027eb6:	f804 9038 	strb.w	r9, [r4, r8, lsl #3]
+ 8027eba:	f8d1 c80a 	ldr.w	ip, [r1, #2058]	@ 0x80a
+ 8027ebe:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027ec2:	f9b1 080e 	ldrsh.w	r0, [r1, #2062]	@ 0x80e
+ 8027ec6:	f8b1 e808 	ldrh.w	lr, [r1, #2056]	@ 0x808
+ 8027eca:	80d0      	strh	r0, [r2, #6]
+ 8027ecc:	2d06      	cmp	r5, #6
+ 8027ece:	f000 80c8 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027ed2:	444b      	add	r3, r9
+ 8027ed4:	b29b      	uxth	r3, r3
+ 8027ed6:	42b3      	cmp	r3, r6
+ 8027ed8:	bf28      	it	cs
+ 8027eda:	4633      	movcs	r3, r6
+ 8027edc:	f06f 4860 	mvn.w	r8, #3758096384	@ 0xe0000000
+ 8027ee0:	eb03 0208 	add.w	r2, r3, r8
+ 8027ee4:	2d07      	cmp	r5, #7
+ 8027ee6:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027eea:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027eee:	f8d1 c812 	ldr.w	ip, [r1, #2066]	@ 0x812
+ 8027ef2:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027ef6:	f9b1 0816 	ldrsh.w	r0, [r1, #2070]	@ 0x816
+ 8027efa:	f8b1 e810 	ldrh.w	lr, [r1, #2064]	@ 0x810
+ 8027efe:	80d0      	strh	r0, [r2, #6]
+ 8027f00:	f000 80af 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027f04:	444b      	add	r3, r9
+ 8027f06:	b29b      	uxth	r3, r3
+ 8027f08:	42b3      	cmp	r3, r6
+ 8027f0a:	bf28      	it	cs
+ 8027f0c:	4633      	movcs	r3, r6
+ 8027f0e:	eb03 0208 	add.w	r2, r3, r8
+ 8027f12:	2d08      	cmp	r5, #8
+ 8027f14:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027f18:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027f1c:	f8d1 c81a 	ldr.w	ip, [r1, #2074]	@ 0x81a
+ 8027f20:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027f24:	f9b1 081e 	ldrsh.w	r0, [r1, #2078]	@ 0x81e
+ 8027f28:	f8b1 e818 	ldrh.w	lr, [r1, #2072]	@ 0x818
+ 8027f2c:	80d0      	strh	r0, [r2, #6]
+ 8027f2e:	f000 8098 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027f32:	444b      	add	r3, r9
+ 8027f34:	b29b      	uxth	r3, r3
+ 8027f36:	42b3      	cmp	r3, r6
+ 8027f38:	bf28      	it	cs
+ 8027f3a:	4633      	movcs	r3, r6
+ 8027f3c:	eb03 0208 	add.w	r2, r3, r8
+ 8027f40:	2d09      	cmp	r5, #9
+ 8027f42:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027f46:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027f4a:	f8d1 c822 	ldr.w	ip, [r1, #2082]	@ 0x822
+ 8027f4e:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027f52:	f9b1 0826 	ldrsh.w	r0, [r1, #2086]	@ 0x826
+ 8027f56:	f8b1 e820 	ldrh.w	lr, [r1, #2080]	@ 0x820
+ 8027f5a:	80d0      	strh	r0, [r2, #6]
+ 8027f5c:	f000 8081 	beq.w	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027f60:	444b      	add	r3, r9
+ 8027f62:	b29b      	uxth	r3, r3
+ 8027f64:	42b3      	cmp	r3, r6
+ 8027f66:	bf28      	it	cs
+ 8027f68:	4633      	movcs	r3, r6
+ 8027f6a:	eb03 0208 	add.w	r2, r3, r8
+ 8027f6e:	2d0a      	cmp	r5, #10
+ 8027f70:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027f74:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027f78:	f8d1 c82a 	ldr.w	ip, [r1, #2090]	@ 0x82a
+ 8027f7c:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027f80:	f9b1 082e 	ldrsh.w	r0, [r1, #2094]	@ 0x82e
+ 8027f84:	f8b1 e828 	ldrh.w	lr, [r1, #2088]	@ 0x828
+ 8027f88:	80d0      	strh	r0, [r2, #6]
+ 8027f8a:	d06a      	beq.n	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027f8c:	444b      	add	r3, r9
+ 8027f8e:	b29b      	uxth	r3, r3
+ 8027f90:	42b3      	cmp	r3, r6
+ 8027f92:	bf28      	it	cs
+ 8027f94:	4633      	movcs	r3, r6
+ 8027f96:	eb03 0208 	add.w	r2, r3, r8
+ 8027f9a:	2d0b      	cmp	r5, #11
+ 8027f9c:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027fa0:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027fa4:	f8d1 c832 	ldr.w	ip, [r1, #2098]	@ 0x832
+ 8027fa8:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027fac:	f9b1 0836 	ldrsh.w	r0, [r1, #2102]	@ 0x836
+ 8027fb0:	f8b1 e830 	ldrh.w	lr, [r1, #2096]	@ 0x830
+ 8027fb4:	80d0      	strh	r0, [r2, #6]
+ 8027fb6:	d054      	beq.n	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027fb8:	444b      	add	r3, r9
+ 8027fba:	b29b      	uxth	r3, r3
+ 8027fbc:	42b3      	cmp	r3, r6
+ 8027fbe:	bf28      	it	cs
+ 8027fc0:	4633      	movcs	r3, r6
+ 8027fc2:	eb03 0208 	add.w	r2, r3, r8
+ 8027fc6:	2d0c      	cmp	r5, #12
+ 8027fc8:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027fcc:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027fd0:	f8d1 c83a 	ldr.w	ip, [r1, #2106]	@ 0x83a
+ 8027fd4:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8027fd8:	f9b1 083e 	ldrsh.w	r0, [r1, #2110]	@ 0x83e
+ 8027fdc:	f8b1 e838 	ldrh.w	lr, [r1, #2104]	@ 0x838
+ 8027fe0:	80d0      	strh	r0, [r2, #6]
+ 8027fe2:	d03e      	beq.n	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8027fe4:	444b      	add	r3, r9
+ 8027fe6:	b29b      	uxth	r3, r3
+ 8027fe8:	42b3      	cmp	r3, r6
+ 8027fea:	bf28      	it	cs
+ 8027fec:	4633      	movcs	r3, r6
+ 8027fee:	eb03 0208 	add.w	r2, r3, r8
+ 8027ff2:	2d0d      	cmp	r5, #13
+ 8027ff4:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8027ff8:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8027ffc:	f8d1 c842 	ldr.w	ip, [r1, #2114]	@ 0x842
+ 8028000:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8028004:	f9b1 0846 	ldrsh.w	r0, [r1, #2118]	@ 0x846
+ 8028008:	f8b1 e840 	ldrh.w	lr, [r1, #2112]	@ 0x840
+ 802800c:	80d0      	strh	r0, [r2, #6]
+ 802800e:	d028      	beq.n	8028062 <MotionFX_MagCal_run+0x3ea>
+ 8028010:	444b      	add	r3, r9
+ 8028012:	b29b      	uxth	r3, r3
+ 8028014:	42b3      	cmp	r3, r6
+ 8028016:	bf28      	it	cs
+ 8028018:	4633      	movcs	r3, r6
+ 802801a:	eb03 0208 	add.w	r2, r3, r8
+ 802801e:	2d0e      	cmp	r5, #14
+ 8028020:	f804 9032 	strb.w	r9, [r4, r2, lsl #3]
+ 8028024:	eb04 02c2 	add.w	r2, r4, r2, lsl #3
+ 8028028:	f8d1 c84a 	ldr.w	ip, [r1, #2122]	@ 0x84a
+ 802802c:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8028030:	f9b1 084e 	ldrsh.w	r0, [r1, #2126]	@ 0x84e
+ 8028034:	f8b1 e848 	ldrh.w	lr, [r1, #2120]	@ 0x848
+ 8028038:	80d0      	strh	r0, [r2, #6]
+ 802803a:	d012      	beq.n	8028062 <MotionFX_MagCal_run+0x3ea>
+ 802803c:	444b      	add	r3, r9
+ 802803e:	b29b      	uxth	r3, r3
+ 8028040:	42b3      	cmp	r3, r6
+ 8028042:	bf28      	it	cs
+ 8028044:	4633      	movcs	r3, r6
+ 8028046:	4498      	add	r8, r3
+ 8028048:	eb04 02c8 	add.w	r2, r4, r8, lsl #3
+ 802804c:	f804 9038 	strb.w	r9, [r4, r8, lsl #3]
+ 8028050:	f8d1 c852 	ldr.w	ip, [r1, #2130]	@ 0x852
+ 8028054:	f8c2 c002 	str.w	ip, [r2, #2]
+ 8028058:	f9b1 0856 	ldrsh.w	r0, [r1, #2134]	@ 0x856
+ 802805c:	f8b1 e850 	ldrh.w	lr, [r1, #2128]	@ 0x850
+ 8028060:	80d0      	strh	r0, [r2, #6]
+ 8028062:	810b      	strh	r3, [r1, #8]
+ 8028064:	4477      	add	r7, lr
+ 8028066:	2301      	movs	r3, #1
+ 8028068:	f8c2 c002 	str.w	ip, [r2, #2]
+ 802806c:	80d0      	strh	r0, [r2, #6]
+ 802806e:	7013      	strb	r3, [r2, #0]
+ 8028070:	60cf      	str	r7, [r1, #12]
+ 8028072:	f891 3048 	ldrb.w	r3, [r1, #72]	@ 0x48
+ 8028076:	2b00      	cmp	r3, #0
+ 8028078:	f43f ae76 	beq.w	8027d68 <MotionFX_MagCal_run+0xf0>
+ 802807c:	890a      	ldrh	r2, [r1, #8]
+ 802807e:	894b      	ldrh	r3, [r1, #10]
+ 8028080:	4293      	cmp	r3, r2
+ 8028082:	d022      	beq.n	80280ca <MotionFX_MagCal_run+0x452>
+ 8028084:	b32a      	cbz	r2, 80280d2 <MotionFX_MagCal_run+0x45a>
+ 8028086:	68cb      	ldr	r3, [r1, #12]
+ 8028088:	f9b1 0002 	ldrsh.w	r0, [r1, #2]
+ 802808c:	3301      	adds	r3, #1
+ 802808e:	4403      	add	r3, r0
+ 8028090:	1c58      	adds	r0, r3, #1
+ 8028092:	d01e      	beq.n	80280d2 <MotionFX_MagCal_run+0x45a>
+ 8028094:	f503 541c 	add.w	r4, r3, #9984	@ 0x2700
+ 8028098:	3410      	adds	r4, #16
+ 802809a:	6cc8      	ldr	r0, [r1, #76]	@ 0x4c
+ 802809c:	42a0      	cmp	r0, r4
+ 802809e:	f8b1 4050 	ldrh.w	r4, [r1, #80]	@ 0x50
+ 80280a2:	bf84      	itt	hi
+ 80280a4:	64cb      	strhi	r3, [r1, #76]	@ 0x4c
+ 80280a6:	4618      	movhi	r0, r3
+ 80280a8:	4420      	add	r0, r4
+ 80280aa:	4283      	cmp	r3, r0
+ 80280ac:	f4ff ae5c 	bcc.w	8027d68 <MotionFX_MagCal_run+0xf0>
+ 80280b0:	b132      	cbz	r2, 80280c0 <MotionFX_MagCal_run+0x448>
+ 80280b2:	f9b1 0002 	ldrsh.w	r0, [r1, #2]
+ 80280b6:	68c9      	ldr	r1, [r1, #12]
+ 80280b8:	3a01      	subs	r2, #1
+ 80280ba:	fb00 1212 	mls	r2, r0, r2, r1
+ 80280be:	b292      	uxth	r2, r2
+ 80280c0:	1a9b      	subs	r3, r3, r2
+ 80280c2:	b21b      	sxth	r3, r3
+ 80280c4:	42a3      	cmp	r3, r4
+ 80280c6:	f6ff ae4f 	blt.w	8027d68 <MotionFX_MagCal_run+0xf0>
+ 80280ca:	e8bd 43f0 	ldmia.w	sp!, {r4, r5, r6, r7, r8, r9, lr}
+ 80280ce:	f7fd b89b 	b.w	8025208 <MEMS_runMagCal.constprop.0>
+ 80280d2:	f242 7410 	movw	r4, #10000	@ 0x2710
+ 80280d6:	2300      	movs	r3, #0
+ 80280d8:	e7df      	b.n	802809a <MotionFX_MagCal_run+0x422>
+;
+; --- MotionFX_MagCal_getParams @ 0x080280dc  size=0x8c ---
+
+C:\dev\flysight2firmware\flysight-2-firmware\Release\flysight-2-firmware.elf:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+080280dc <MotionFX_MagCal_getParams>:
+ 80280dc:	4b20      	ldr	r3, [pc, #128]	@ (8028160 <MotionFX_MagCal_getParams+0x84>)
+ 80280de:	f893 23c4 	ldrb.w	r2, [r3, #964]	@ 0x3c4
+ 80280e2:	b902      	cbnz	r2, 80280e6 <MotionFX_MagCal_getParams+0xa>
+ 80280e4:	4770      	bx	lr
+ 80280e6:	b530      	push	{r4, r5, lr}
+ 80280e8:	f103 0e6c 	add.w	lr, r3, #108	@ 0x6c
+ 80280ec:	4604      	mov	r4, r0
+ 80280ee:	f893 506c 	ldrb.w	r5, [r3, #108]	@ 0x6c
+ 80280f2:	ed9f 6a1c 	vldr	s12, [pc, #112]	@ 8028164 <MotionFX_MagCal_getParams+0x88>
+ 80280f6:	e8be 000f 	ldmia.w	lr!, {r0, r1, r2, r3}
+ 80280fa:	b08f      	sub	sp, #60	@ 0x3c
+ 80280fc:	f10d 0c04 	add.w	ip, sp, #4
+ 8028100:	e8ac 000f 	stmia.w	ip!, {r0, r1, r2, r3}
+ 8028104:	e8be 000f 	ldmia.w	lr!, {r0, r1, r2, r3}
+ 8028108:	e8ac 000f 	stmia.w	ip!, {r0, r1, r2, r3}
+ 802810c:	e8be 000f 	ldmia.w	lr!, {r0, r1, r2, r3}
+ 8028110:	eddd 6a02 	vldr	s13, [sp, #8]
+ 8028114:	ed9d 7a03 	vldr	s14, [sp, #12]
+ 8028118:	eddd 7a04 	vldr	s15, [sp, #16]
+ 802811c:	eefd 6ae6 	vcvt.s32.f32	s13, s13
+ 8028120:	eebd 7ac7 	vcvt.s32.f32	s14, s14
+ 8028124:	eefd 7ae7 	vcvt.s32.f32	s15, s15
+ 8028128:	e8ac 000f 	stmia.w	ip!, {r0, r1, r2, r3}
+ 802812c:	eef8 6ae6 	vcvt.f32.s32	s13, s13
+ 8028130:	eeb8 7ac7 	vcvt.f32.s32	s14, s14
+ 8028134:	eef8 7ae7 	vcvt.f32.s32	s15, s15
+ 8028138:	f8de 3000 	ldr.w	r3, [lr]
+ 802813c:	7325      	strb	r5, [r4, #12]
+ 802813e:	ee66 6a86 	vmul.f32	s13, s13, s12
+ 8028142:	ee27 7a06 	vmul.f32	s14, s14, s12
+ 8028146:	ee67 7a86 	vmul.f32	s15, s15, s12
+ 802814a:	edc4 6a00 	vstr	s13, [r4]
+ 802814e:	f8cc 3000 	str.w	r3, [ip]
+ 8028152:	ed84 7a01 	vstr	s14, [r4, #4]
+ 8028156:	edc4 7a02 	vstr	s15, [r4, #8]
+ 802815a:	b00f      	add	sp, #60	@ 0x3c
+ 802815c:	bd30      	pop	{r4, r5, pc}
+ 802815e:	bf00      	nop
+ 8028160:	20000254 	.word	0x20000254
+ 8028164:	3b03126f 	.word	0x3b03126f
