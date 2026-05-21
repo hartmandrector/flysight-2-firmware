@@ -222,7 +222,7 @@ static const char defaultConfig[] =
 		"; Fusion_Mag_Reject, calibration matrices) are available but not\n"
 		"; documented here. Use calibration tools for proper setup.\n"
 		";\n"
-		"Enable_Fusion:     0 ; 0 = off, 1 = on\n";
+		"Enable_Fusion:     1 ; 0 = off, 1 = on\n";
 
 void FS_Config_Init(void)
 {
@@ -294,7 +294,7 @@ void FS_Config_Init(void)
 	config.ble_mag_divider   = 0;  // Auto-calculate
 
 	// Fusion AHRS defaults
-	config.enable_fusion       = 0;     // Disabled by default
+	config.enable_fusion       = 1;     // Enabled by default
 	config.fusion_gain         = 46;    // 0.46 default gain (x100)
 	config.fusion_accel_reject = 10;    // 10° acceleration rejection
 	config.fusion_mag_reject   = 10;    // 10° magnetic rejection
